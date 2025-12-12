@@ -17,8 +17,7 @@ ENV/
 !.env.example
 
 # API credentials and tokens
-token.json
-client_secrets.json
+**.json
 
 # Temporary files
 *.tmp

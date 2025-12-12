@@ -76,6 +76,8 @@ class Config:
     REDDIT_CLIENT_ID: str
     REDDIT_CLIENT_SECRET: str
     REDDIT_USER_AGENT: str
+    REDDIT_USERNAME: str
+    REDDIT_PASSWORD: str
     GOOGLE_API_KEY: str
     ELEVENLABS_API_KEY: str
     ELEVENLABS_VOICE_ID: str
@@ -105,6 +107,8 @@ class Config:
             'REDDIT_CLIENT_ID',
             'REDDIT_CLIENT_SECRET',
             'REDDIT_USER_AGENT',
+            'REDDIT_USERNAME',
+            'REDDIT_PASSWORD',
             'GOOGLE_API_KEY',
             'ELEVENLABS_API_KEY',
             'ELEVENLABS_VOICE_ID',
@@ -149,7 +153,9 @@ class RedditClient:
             self.reddit = praw.Reddit(
                 client_id=Config.REDDIT_CLIENT_ID,
                 client_secret=Config.REDDIT_CLIENT_SECRET,
-                user_agent=Config.REDDIT_USER_AGENT
+                user_agent=Config.REDDIT_USER_AGENT,
+                username=Config.REDDIT_USERNAME,
+                password=Config.REDDIT_PASSWORD
             )
             logger.info("Reddit client initialized")
         except Exception as e:
@@ -252,10 +258,7 @@ class GeminiClient:
     def __init__(self):
         try:
             genai.configure(api_key=Config.GOOGLE_API_KEY)
-            # Try one of these newer models
             self.model = genai.GenerativeModel('gemini-2.5-flash')
-            # OR
-            # self.model = genai.GenerativeModel('gemini-1.5-pro')
             logger.info("Gemini client initialized")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini client: {e}")
@@ -793,7 +796,7 @@ class WorkflowManager:
         # 1. Reddit
         try:
             logger.info("Checking Reddit connection...")
-            self.reddit.reddit.subreddit("all").id
+            self.reddit.reddit.subreddit("test").id
             logger.info("✅ Reddit connection verified")
         except Exception as e:
             raise ConfigurationError(f"Reddit verification failed: {e}")
@@ -820,7 +823,7 @@ class WorkflowManager:
         try:
             logger.info("Checking HeyGen API...")
             headers = {"x-api-key": self.heygen.api_key}
-            response = requests.get("https://api.heygen.com/v2/avatars", headers=headers, timeout=10)
+            response = requests.get("https://api.heygen.com/v2/avatars", headers=headers, timeout=30)
             response.raise_for_status()
             logger.info("✅ HeyGen API verified")
         except Exception as e:
