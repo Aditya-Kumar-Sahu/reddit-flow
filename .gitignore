@@ -8,3 +8,30 @@ wheels/
 
 # Virtual environments
 .venv
+venv/
+ENV/
+
+# Environment variables and secrets
+.env
+*.env
+!.env.example
+
+# API credentials and tokens
+token.json
+client_secrets.json
+
+# Temporary files
+*.tmp
+*.log
+temp/
+tmp/
+*.mp4
+*.mp3
+*.wav
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
