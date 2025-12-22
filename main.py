@@ -258,7 +258,7 @@ class GeminiClient:
     def __init__(self):
         try:
             genai.configure(api_key=Config.GOOGLE_API_KEY)
-            self.model = genai.GenerativeModel('gemini-2.5-flash')
+            self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
             logger.info("Gemini client initialized")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini client: {e}")
@@ -446,12 +446,7 @@ class ElevenLabsClient:
                 "Content-Type": "application/json"
             }
             data = {
-                "text": text,
-                "model_id": "eleven_monolingual_v1",
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75
-                }
+                "text": text
             }
             
             logger.debug(f"Converting {len(text)} characters to speech")
@@ -471,12 +466,13 @@ class ElevenLabsClient:
 
 
 class HeyGenClient:
-    """Client for HeyGen avatar video generation."""
+    """Client for HeyGen avatar video generation (API v2)."""
     
     def __init__(self):
         self.api_key = Config.HEYGEN_API_KEY
         self.avatar_id = Config.HEYGEN_AVATAR_ID
         self.base_url = "https://api.heygen.com"
+        # The upload endpoint is distinct from the main API
         self.upload_url = "https://upload.heygen.com/v1/asset"
         logger.info("HeyGen client initialized")
 
@@ -487,28 +483,38 @@ class HeyGenClient:
     )
     def upload_audio(self, audio_data: bytes) -> str:
         """
-        Upload audio to HeyGen.
+        Upload audio to HeyGen (v1/asset).
         
         Args:
-            audio_data: Audio file bytes
+            audio_data: Audio file bytes (MP3/WAV)
             
         Returns:
-            URL of uploaded audio
+            URL of uploaded audio asset
             
         Raises:
             VideoGenerationError: If upload fails
         """
         try:
+            # Content-Type should match the audio format, usually audio/mpeg for mp3
             headers = {
-                "x-api-key": self.api_key,
-                "Content-Type": "audio/mpeg"
+                "X-Api-Key": self.api_key,
+                "Content-Type": "audio/mpeg" 
             }
             
             logger.debug(f"Uploading {len(audio_data) / 1024:.2f} KB audio to HeyGen")
-            response = requests.post(self.upload_url, data=audio_data, headers=headers, timeout=120)
+            
+            # Note: The v2 API still uses v1 assets
+            response = requests.post(
+                self.upload_url, 
+                data=audio_data, 
+                headers=headers, 
+                timeout=120
+            )
             response.raise_for_status()
             
-            audio_url = response.json()["data"]["url"]
+            result = response.json()
+            # The v1/asset endpoint returns data.url and data.id
+            audio_url = result["data"]["url"]
             logger.info(f"Audio uploaded successfully: {audio_url}")
             return audio_url
             
@@ -524,12 +530,13 @@ class HeyGenClient:
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type(requests.exceptions.RequestException)
     )
-    def generate_video(self, audio_url: str) -> str:
+    def generate_video(self, audio_url: str, title: str = None) -> str:
         """
-        Start avatar video generation.
+        Start avatar video generation using HeyGen API v2.
         
         Args:
-            audio_url: URL of uploaded audio
+            audio_url: URL of uploaded audio (from upload_audio)
+            title: Optional title for the video
             
         Returns:
             Video ID for tracking generation
@@ -543,6 +550,9 @@ class HeyGenClient:
                 "X-Api-Key": self.api_key,
                 "Content-Type": "application/json"
             }
+            
+            # V2 Payload Structure:
+            # video_inputs is an array of scenes. We use a single scene here.
             data = {
                 "video_inputs": [
                     {
@@ -554,21 +564,27 @@ class HeyGenClient:
                         "voice": {
                             "type": "audio",
                             "audio_url": audio_url
-                        }
+                            # Alternatively, use "audio_asset_id" if you have the ID
+                        },
+                        # Background is optional; defaults to transparent/original if omitted
                     }
                 ],
-                "test": False,
-                "caption": False,
+                "test": False, # Set to True for testing (watermarked, no credit usage)
+                "caption": False, # Set to True to generate captions
                 "dimension": {
                     "width": Config.HEYGEN_VIDEO_WIDTH,
                     "height": Config.HEYGEN_VIDEO_HEIGHT
                 }
             }
             
-            logger.debug("Requesting HeyGen video generation")
+            if title:
+                data["title"] = title
+            
+            logger.debug("Requesting HeyGen video generation (v2)")
             response = requests.post(url, json=data, headers=headers, timeout=60)
             response.raise_for_status()
             
+            # V2 response structure: data -> video_id
             video_id = response.json()["data"]["video_id"]
             logger.info(f"Video generation started: {video_id}")
             return video_id
@@ -582,7 +598,7 @@ class HeyGenClient:
 
     async def wait_for_video(self, video_id: str, update_callback=None) -> str:
         """
-        Wait for video generation to complete with timeout.
+        Wait for video generation to complete with timeout (Async).
         
         Args:
             video_id: HeyGen video ID
@@ -590,26 +606,23 @@ class HeyGenClient:
             
         Returns:
             URL of completed video
-            
-        Raises:
-            VideoGenerationError: If video generation fails or times out
         """
+        # Status check is still v1/video_status.get even for v2 videos
         url = f"{self.base_url}/v1/video_status.get"
         headers = {
-            "x-api-key": self.api_key,
-            "accept": "application/json"
+            "X-Api-Key": self.api_key,
+            "Accept": "application/json"
         }
         
         start_time = time.time()
         attempt = 0
-        wait_time = 10  # Start with 10 seconds
-        max_wait_time = 60  # Max 60 seconds between checks
+        wait_time = 10
+        max_wait_time = 60
         
         try:
             while True:
                 elapsed = time.time() - start_time
                 
-                # Check timeout
                 if elapsed > Config.HEYGEN_WAIT_TIMEOUT:
                     raise VideoGenerationError(
                         f"Video generation timed out after {Config.HEYGEN_WAIT_TIMEOUT} seconds"
@@ -618,10 +631,12 @@ class HeyGenClient:
                 attempt += 1
                 logger.debug(f"Checking video status (attempt {attempt}, elapsed: {elapsed:.0f}s)")
                 
-                response = requests.get(
-                    url,
-                    params={"video_id": video_id},
-                    headers=headers,
+                # Run blocking request in a thread to avoid blocking the async event loop
+                response = await asyncio.to_thread(
+                    requests.get, 
+                    url, 
+                    params={"video_id": video_id}, 
+                    headers=headers, 
                     timeout=30
                 )
                 response.raise_for_status()
@@ -639,20 +654,17 @@ class HeyGenClient:
                     logger.error(f"HeyGen video generation failed: {error}")
                     raise VideoGenerationError(f"Video generation failed: {error}")
                 
-                # Send status update via callback
                 if update_callback:
                     await update_callback(f"Video generation: {status} ({elapsed:.0f}s elapsed)")
                 
                 logger.info(f"Video status: {status}, waiting {wait_time}s...")
                 await asyncio.sleep(wait_time)
                 
-                # Exponential backoff
                 wait_time = min(wait_time * 1.5, max_wait_time)
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error checking video status: {e}", exc_info=True)
             raise VideoGenerationError(f"Failed to check video status: {e}")
-
 
 class YouTubeClient:
     """Client for YouTube video uploads."""
@@ -778,10 +790,62 @@ class YouTubeClient:
 
 # --- Main Workflow ---
 
+class StructuredLogger:
+    """Handles structured JSON logging to a file."""
+    
+    def __init__(self, log_dir: str = "logs"):
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(exist_ok=True)
+        
+        # Create unique log file for this session
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.log_file = self.log_dir / f"bot_execution_{timestamp}.json"
+        
+        # Initialize the file
+        self._write_entry({
+            "event": "session_start",
+            "timestamp": datetime.now().isoformat(),
+            "config": {
+                "log_level": logging.getLevelName(logger.level)
+            }
+        })
+        logger.info(f"Structured logging enabled: {self.log_file}")
+
+    def _write_entry(self, data: Dict[str, Any]) -> None:
+        """Write a single JSON entry to the log file."""
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(data, default=str) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to write to structured log: {e}")
+
+    def log_step(self, chat_id: int, step: int, name: str, status: str, 
+                 input_data: Any = None, output_data: Any = None, error: str = None) -> None:
+        """Log a workflow step."""
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event": "step_execution",
+            "chat_id": chat_id,
+            "step_number": step,
+            "step_name": name,
+            "status": status,
+        }
+        
+        if input_data is not None:
+            entry["input"] = input_data
+        if output_data is not None:
+            entry["output"] = output_data
+        if error is not None:
+            entry["error"] = error
+            
+        self._write_entry(entry)
+
+
 class WorkflowManager:
     """Manages the complete workflow from Reddit to YouTube."""
     
     def __init__(self):
+        self.json_logger = StructuredLogger()
         self.reddit = RedditClient()
         self.gemini = GeminiClient()
         self.elevenlabs = ElevenLabsClient()
@@ -823,7 +887,7 @@ class WorkflowManager:
         try:
             logger.info("Checking HeyGen API...")
             headers = {"x-api-key": self.heygen.api_key}
-            response = requests.get("https://api.heygen.com/v2/avatars", headers=headers, timeout=30)
+            response = requests.head("https://api.heygen.com/v1/user/me", headers=headers)
             response.raise_for_status()
             logger.info("✅ HeyGen API verified")
         except Exception as e:
@@ -861,6 +925,7 @@ class WorkflowManager:
             return
         
         self.active_operations[chat_id] = True
+        self.json_logger.log_step(chat_id, 0, "process_start", "started", input_data={"message": message_text})
         
         try:
             # Send initial status message
@@ -870,12 +935,16 @@ class WorkflowManager:
             )
             
             # Step 1: Extract Link Info
+            self.json_logger.log_step(chat_id, 1, "extract_link_info", "started", input_data=message_text)
             link_info = await self.gemini.extract_link_info(message_text)
+            self.json_logger.log_step(chat_id, 1, "extract_link_info", "completed", output_data=link_info)
+            
             subreddit = link_info.get("subReddit")
             post_id = link_info.get("postId")
             user_opinion = link_info.get("text", "")
             
             if not subreddit or not post_id:
+                self.json_logger.log_step(chat_id, 1, "extract_link_info", "failed", error="Missing subreddit or post_id")
                 await status_message.edit_text(
                     "❌ Could not extract valid Reddit information from your message.\n\n"
                     "Please send a message like:\n"
@@ -886,6 +955,7 @@ class WorkflowManager:
             
             # Validate Reddit URL format
             if not self._validate_reddit_url(subreddit, post_id):
+                self.json_logger.log_step(chat_id, 1, "extract_link_info", "failed", error="Invalid URL format")
                 await status_message.edit_text(
                     "❌ Invalid Reddit URL format.\n\n"
                     f"Subreddit: r/{subreddit}\n"
@@ -901,9 +971,15 @@ class WorkflowManager:
                 "▪️ Step 2/6: Fetching Reddit data"
             )
             
+            self.json_logger.log_step(chat_id, 2, "fetch_reddit_data", "started", input_data={"subreddit": subreddit, "post_id": post_id})
             post_data = self.reddit.get_post_data(subreddit, post_id)
+            # Log summary of post data to avoid huge logs
+            post_data_summary = {k: v for k, v in post_data.items() if k != "comments"}
+            post_data_summary["comments_count"] = len(post_data.get("comments", []))
+            self.json_logger.log_step(chat_id, 2, "fetch_reddit_data", "completed", output_data=post_data_summary)
             
             if not post_data["selftext"] and not post_data["comments"]:
+                self.json_logger.log_step(chat_id, 2, "fetch_reddit_data", "failed", error="No content")
                 await status_message.edit_text(
                     "❌ This post has no text content or comments to convert.\n"
                     "Please try a different post."
@@ -918,6 +994,7 @@ class WorkflowManager:
                 "▪️ Step 3/6: Generating script with AI"
             )
             
+            self.json_logger.log_step(chat_id, 3, "generate_script", "started", input_data={"user_opinion": user_opinion})
             script_data = await self.gemini.generate_script(
                 post_data["selftext"] or post_data["title"],
                 post_data["comments"],
@@ -925,6 +1002,7 @@ class WorkflowManager:
             )
             script = script_data["script"]
             title = script_data["title"]
+            self.json_logger.log_step(chat_id, 3, "generate_script", "completed", output_data=script_data)
             
             # Step 4: Text to Speech
             await status_message.edit_text(
@@ -935,7 +1013,9 @@ class WorkflowManager:
                 "▪️ Step 4/6: Converting text to speech"
             )
             
+            self.json_logger.log_step(chat_id, 4, "text_to_speech", "started", input_data={"script_length": len(script)})
             audio_bytes = self.elevenlabs.text_to_speech(script)
+            self.json_logger.log_step(chat_id, 4, "text_to_speech", "completed", output_data={"audio_size": len(audio_bytes)})
             
             # Step 5: Create Avatar Video
             await status_message.edit_text(
@@ -947,8 +1027,10 @@ class WorkflowManager:
                 "▪️ Step 5/6: Creating avatar video (this takes 2-5 minutes)"
             )
             
+            self.json_logger.log_step(chat_id, 5, "create_avatar_video", "started")
             audio_url = self.heygen.upload_audio(audio_bytes)
             video_id = self.heygen.generate_video(audio_url)
+            self.json_logger.log_step(chat_id, 5, "create_avatar_video", "in_progress", output_data={"video_id": video_id})
             
             # Create callback for video status updates
             async def update_video_status(status: str):
@@ -965,6 +1047,7 @@ class WorkflowManager:
                     logger.warning(f"Failed to update status message: {e}")
             
             video_url = await self.heygen.wait_for_video(video_id, update_video_status)
+            self.json_logger.log_step(chat_id, 5, "create_avatar_video", "completed", output_data={"video_url": video_url})
             
             # Download video to temporary file
             await status_message.edit_text(
@@ -986,11 +1069,13 @@ class WorkflowManager:
                 logger.info(f"Video downloaded to {temp_video_path}")
             
             # Step 6: Upload to YouTube
+            self.json_logger.log_step(chat_id, 6, "upload_youtube", "started", input_data={"title": title})
             youtube_id = self.youtube.upload_video(
                 temp_video_path,
                 title,
                 f"{script}\n\nSource: {link_info['link']}"
             )
+            self.json_logger.log_step(chat_id, 6, "upload_youtube", "completed", output_data={"youtube_id": youtube_id})
             
             # Final success message
             youtube_link = f"https://www.youtube.com/watch?v={youtube_id}"
@@ -1000,29 +1085,36 @@ class WorkflowManager:
                 f"🔗 Link: {youtube_link}\n\n"
                 "Thanks for using the bot!"
             )
+            self.json_logger.log_step(chat_id, 7, "process_complete", "success", output_data={"youtube_link": youtube_link})
 
         except RedditAPIError as e:
             logger.error(f"Reddit API error: {e}")
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"RedditAPIError: {e}")
             await self._send_error_message(status_message, chat_id, context, 
                 "Reddit Error", str(e))
         except AIGenerationError as e:
             logger.error(f"AI generation error: {e}")
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"AIGenerationError: {e}")
             await self._send_error_message(status_message, chat_id, context,
                 "AI Generation Error", str(e))
         except TTSError as e:
             logger.error(f"TTS error: {e}")
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"TTSError: {e}")
             await self._send_error_message(status_message, chat_id, context,
                 "Text-to-Speech Error", str(e))
         except VideoGenerationError as e:
             logger.error(f"Video generation error: {e}")
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"VideoGenerationError: {e}")
             await self._send_error_message(status_message, chat_id, context,
                 "Video Generation Error", str(e))
         except YouTubeUploadError as e:
             logger.error(f"YouTube upload error: {e}")
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"YouTubeUploadError: {e}")
             await self._send_error_message(status_message, chat_id, context,
                 "YouTube Upload Error", str(e))
         except Exception as e:
             logger.error(f"Unexpected error processing request: {e}", exc_info=True)
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"UnexpectedError: {e}")
             await self._send_error_message(status_message, chat_id, context,
                 "Unexpected Error", f"An unexpected error occurred: {str(e)}")
         finally:
