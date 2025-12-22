@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import requests
 from dotenv import load_dotenv
 
@@ -21,7 +22,17 @@ def check_avatar_availability():
     try:
         with open('avatar.json', 'r') as f:
             data = json.load(f)
-            avatars = data.get('data', {}).get('avatars', [])
+            # Handle if file is the direct API response structure or a simple list
+            if isinstance(data, dict) and 'data' in data:
+                avatars = data.get('data', {}).get('avatars', [])
+            elif isinstance(data, list):
+                avatars = data
+            else:
+                avatars = []
+                
+            if not avatars:
+                print("⚠️  No avatars found in avatar.json. Check the file structure.")
+                return
     except FileNotFoundError:
         print("❌ avatar.json not found")
         return
@@ -34,9 +45,10 @@ def check_avatar_availability():
 
     print(f"Found {len(avatars)} avatars to check.\n")
 
-    for avatar in avatars:
+    for i, avatar in enumerate(avatars):
         avatar_id = avatar.get('avatar_id')
-        avatar_name = avatar.get('avatar_name', 'Unknown Name')
+        # Use a fallback name if one isn't in the list source
+        source_name = avatar.get('avatar_name', f'Unknown_{i}')
         
         if not avatar_id:
             continue
@@ -45,26 +57,34 @@ def check_avatar_availability():
         
         try:
             response = requests.get(detail_url, headers=headers, timeout=10)
+            
             if response.status_code == 200:
                 detail_data = response.json()
-                # Check if we got valid data back. 
-                # The API might return 200 but with an error in the body or empty data if not found/accessible?
-                # Based on docs, 200 OK means success.
-                # Let's assume if we get a name back it's good.
-                fetched_name = detail_data.get('data', {}).get('avatar_name')
-                if fetched_name:
+                data_obj = detail_data.get('data')
+
+                # FIX: The details endpoint uses 'name', not 'avatar_name'
+                if data_obj and 'name' in data_obj:
+                    fetched_name = data_obj['name']
                     available_avatars.append(f"{fetched_name} ({avatar_id})")
-                    print(f"✅ Available: {avatar_name}")
+                    print(f"✅ Available: {fetched_name}")
                 else:
-                    unavailable_avatars.append(f"{avatar_name} ({avatar_id}) - No data returned")
-                    print(f"⚠️  Unavailable (No Data): {avatar_name}")
+                    # If we get 200 OK but data is null, the ID might be deprecated or invalid
+                    unavailable_avatars.append(f"{source_name} ({avatar_id}) - Data object empty")
+                    print(f"⚠️  Unavailable (Empty Data): {source_name}")
+            elif response.status_code == 429:
+                print(f"⏳ Rate limited on {source_name}. Pausing for 5 seconds...")
+                time.sleep(5)
+                unavailable_avatars.append(f"{source_name} ({avatar_id}) - Rate Limited")
             else:
-                unavailable_avatars.append(f"{avatar_name} ({avatar_id}) - Status {response.status_code}")
-                print(f"❌ Unavailable ({response.status_code}): {avatar_name}")
+                unavailable_avatars.append(f"{source_name} ({avatar_id}) - Status {response.status_code}")
+                print(f"❌ Unavailable ({response.status_code}): {source_name}")
                 
         except Exception as e:
-            unavailable_avatars.append(f"{avatar_name} ({avatar_id}) - Error: {str(e)}")
-            print(f"❌ Error checking {avatar_name}: {e}")
+            unavailable_avatars.append(f"{source_name} ({avatar_id}) - Error: {str(e)}")
+            print(f"❌ Error checking {source_name}: {e}")
+        
+        # Pause briefly between requests to be polite to the API
+        time.sleep(0.5)
 
     print("\n" + "="*30)
     print("SUMMARY")
