@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache
 
 # Virtual environments
 .venv
@@ -20,17 +21,16 @@ ENV/
 **.json
 
 # Temporary files
-*.tmp
-*.log
 temp/
 tmp/
+logs/
+*.log
 *.mp4
 *.mp3
 *.wav
 
 # IDE
 .vscode/
-.idea/
-*.swp
-*.swo
-*~
+
+# Progress tracking
+PROGRESS.md

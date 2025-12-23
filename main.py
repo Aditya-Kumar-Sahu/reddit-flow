@@ -497,7 +497,7 @@ class HeyGenClient:
         try:
             # Content-Type should match the audio format, usually audio/mpeg for mp3
             headers = {
-                "X-Api-Key": self.api_key,
+                "x-api-key": self.api_key,
                 "Content-Type": "audio/mpeg" 
             }
             
@@ -1024,7 +1024,7 @@ class WorkflowManager:
                 "✅ Step 2/6: Reddit data fetched\n"
                 "✅ Step 3/6: Script generated\n"
                 "✅ Step 4/6: Audio created\n"
-                "▪️ Step 5/6: Creating avatar video (this takes 2-5 minutes)"
+                "▪️ Step 5/6: Creating avatar video (this takes 5-10 minutes)"
             )
             
             self.json_logger.log_step(chat_id, 5, "create_avatar_video", "started")
@@ -1080,7 +1080,7 @@ class WorkflowManager:
             # Final success message
             youtube_link = f"https://www.youtube.com/watch?v={youtube_id}"
             await status_message.edit_text(
-                "✅ **Video uploaded successfully!**\n\n"
+                "✅ Video uploaded successfully!\n\n"
                 f"🎬 Title: {title}\n"
                 f"🔗 Link: {youtube_link}\n\n"
                 "Thanks for using the bot!"
