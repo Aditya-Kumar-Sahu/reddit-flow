@@ -1077,8 +1077,19 @@ class WorkflowManager:
             )
             self.json_logger.log_step(chat_id, 6, "upload_youtube", "completed", output_data={"youtube_id": youtube_id})
             
+            await status_message.edit_text(
+                "🤖 Processing your request...\n\n"
+                "✅ Step 1/6: Link extracted\n"
+                "✅ Step 2/6: Reddit data fetched\n"
+                "✅ Step 3/6: Script generated\n"
+                "✅ Step 4/6: Audio created\n"
+                "✅ Step 5/6: Video created\n"
+                "✅ Step 6/6: Uploaded to YouTube"
+            )
+
             # Final success message
             youtube_link = f"https://www.youtube.com/watch?v={youtube_id}"
+            time.sleep(2)  # Brief pause before final message
             await status_message.edit_text(
                 "✅ Video uploaded successfully!\n\n"
                 f"🎬 Title: {title}\n"
