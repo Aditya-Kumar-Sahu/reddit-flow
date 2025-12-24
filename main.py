@@ -89,10 +89,10 @@ class Config:
     YOUTUBE_CATEGORY_ID: str = "28"
     YOUTUBE_REGION_CODE: str = "IN"
     MAX_COMMENTS: int = 20
-    SCRIPT_MAX_WORDS: int = 175
+    SCRIPT_MAX_WORDS: int = 200
     HEYGEN_WAIT_TIMEOUT: int = 1800  # 30 minutes
-    HEYGEN_VIDEO_WIDTH: int = 1280
-    HEYGEN_VIDEO_HEIGHT: int = 720
+    HEYGEN_VIDEO_WIDTH: int = 1080  # 9:16 aspect ratio
+    HEYGEN_VIDEO_HEIGHT: int = 1920
     
     # Constants
     REDDIT_URL_PATTERN = re.compile(
@@ -127,8 +127,8 @@ class Config:
         
         if missing_vars:
             raise ConfigurationError(
-                f"Missing required environment variables: {', '.join(missing_vars)}\n"
-                f"Please check your .env file. See .env.example for reference."
+                "Missing required environment variables: {}\n"
+                "Please check your .env file. See .env.example for reference.".format(', '.join(missing_vars))
             )
         
         # Load optional configuration
@@ -159,8 +159,8 @@ class RedditClient:
             )
             logger.info("Reddit client initialized")
         except Exception as e:
-            logger.error(f"Failed to initialize Reddit client: {e}")
-            raise RedditAPIError(f"Reddit initialization failed: {e}")
+            logger.error("Failed to initialize Reddit client: {}".format(e))
+            raise RedditAPIError("Reddit initialization failed: {}".format(e))
 
     @retry(
         stop=stop_after_attempt(3),
@@ -182,7 +182,7 @@ class RedditClient:
             RedditAPIError: If fetching post data fails
         """
         try:
-            logger.info(f"Fetching post r/{subreddit_name}/{post_id}")
+            logger.info("Fetching post r/{}/{}".format(subreddit_name, post_id))
             submission = self.reddit.submission(id=post_id)
             
             # Load some comment replies (limited to avoid excessive loading)
@@ -197,18 +197,18 @@ class RedditClient:
                 "comments": self._extract_comments(submission.comments.list()[:50])  # Limit initial comments
             }
             
-            logger.info(f"Fetched post with {len(post_data['comments'])} comments")
+            logger.info("Fetched post with {} comments".format(len(post_data['comments'])))
             return post_data
             
         except praw.exceptions.InvalidURL:
-            raise RedditAPIError(f"Invalid Reddit post: r/{subreddit_name}/comments/{post_id}")
+            raise RedditAPIError("Invalid Reddit post: r/{}/comments/{}".format(subreddit_name, post_id))
         except praw.exceptions.NotFound:
-            raise RedditAPIError(f"Post not found: r/{subreddit_name}/comments/{post_id}")
+            raise RedditAPIError("Post not found: r/{}/comments/{}".format(subreddit_name, post_id))
         except Exception as e:
-            logger.error(f"Error fetching Reddit post: {e}", exc_info=True)
-            raise RedditAPIError(f"Failed to fetch Reddit post: {e}")
+            logger.error("Error fetching Reddit post: {}".format(e), exc_info=True)
+            raise RedditAPIError("Failed to fetch Reddit post: {}".format(e))
 
-    def _extract_comments(self, comments: List, depth: int = 0, max_depth: int = 3) -> List[Dict]:
+    def _extract_comments(self, comments: List, depth: int = 0, max_depth: int = 5) -> List[Dict]:
         """
         Extract comment data recursively with depth limiting.
         
@@ -246,7 +246,7 @@ class RedditClient:
                     all_content.extend(self._extract_comments(reply_list, depth + 1, max_depth))
                     
             except Exception as e:
-                logger.warning(f"Error extracting comment {getattr(comment, 'id', 'unknown')}: {e}")
+                logger.warning("Error extracting comment {}: {}".format(getattr(comment, 'id', 'unknown'), e))
                 continue
         
         return all_content
@@ -261,8 +261,8 @@ class GeminiClient:
             self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
             logger.info("Gemini client initialized")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini client: {e}")
-            raise AIGenerationError(f"Gemini initialization failed: {e}")
+            logger.error("Failed to initialize Gemini client: {}".format(e))
+            raise AIGenerationError("Gemini initialization failed: {}".format(e))
 
     @retry(
         stop=stop_after_attempt(3),
@@ -282,9 +282,9 @@ class GeminiClient:
             AIGenerationError: If extraction fails
         """
         try:
-            prompt = f"""
+            prompt = """
             Extract the Reddit link, subreddit, post ID, and any additional user text from this message:
-            "{message_text}"
+            "{}"
             
             Return JSON with keys: link, subReddit, postId, text.
             If no additional text is provided, set 'text' to null.
@@ -295,7 +295,7 @@ class GeminiClient:
                 "postId": "1nf7kh6",
                 "text": "text provided by the user other than the link, this can be null"
             }}
-            """
+            """.format(message_text)
             
             logger.debug("Extracting link info with Gemini")
             response = await self.model.generate_content_async(prompt)
@@ -310,15 +310,15 @@ class GeminiClient:
             if not all(key in result for key in ['link', 'subReddit', 'postId']):
                 raise ValueError("Missing required fields in AI response")
             
-            logger.info(f"Extracted link info for r/{result['subReddit']}/{result['postId']}")
+            logger.info("Extracted link info for r/{}/{}".format(result['subReddit'], result['postId']))
             return result
             
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Gemini JSON response: {text}")
-            raise AIGenerationError(f"Invalid JSON from AI: {e}")
+            logger.error("Failed to parse Gemini JSON response: {}".format(text))
+            raise AIGenerationError("Invalid JSON from AI: {}".format(e))
         except Exception as e:
-            logger.error(f"Error extracting link info: {e}", exc_info=True)
-            raise AIGenerationError(f"Failed to extract link information: {e}")
+            logger.error("Error extracting link info: {}".format(e), exc_info=True)
+            raise AIGenerationError("Failed to extract link information: {}".format(e))
 
     @retry(
         stop=stop_after_attempt(3),
@@ -344,12 +344,12 @@ class GeminiClient:
             limited_comments = comments_data[:Config.MAX_COMMENTS]
             comments_str = json.dumps(limited_comments, indent=2)
             
-            system_prompt = f"""
+            system_prompt = """
             You are an expert script writer for social media content.
             
             ## Writing Instructions:
             Write a script for a short-form video for a broad audience. Do not use emojis in the script, and avoid Gen Z slang. 
-            The script should be less than {Config.SCRIPT_MAX_WORDS} words with an engaging hook and interactive CTA.
+            The script should be less than {} words with an engaging hook and interactive CTA.
             
             Write like a confident, clear-thinking human speaking to another smart human.
             Avoid robotic phrases like 'in today's fast-paced world', 'leveraging synergies', or 'furthermore'.
@@ -361,20 +361,20 @@ class GeminiClient:
             Prioritize clarity, personality, and usefulness. Every sentence should feel intentional, not generated.
             Do not ask questions and then answer them yourself.
             Do not describe scenes, just write the speaking script without any markdown.
-            """
+            """.format(Config.SCRIPT_MAX_WORDS)
             
-            user_prompt = f"""
-            Post Content: {post_text}
+            user_prompt = """
+            Post Content: {}
             
-            Comments: {comments_str}
+            Comments: {}
             
-            User Opinion: {user_opinion or 'None provided'}
+            User Opinion: {}
             
             Generate a video script and title based on this Reddit content.
             Return JSON with keys: 'script' and 'title'.
-            """
+            """.format(post_text, comments_str, user_opinion or 'None provided')
             
-            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+            full_prompt = "{}\n\n{}".format(system_prompt, user_prompt)
             
             logger.debug("Generating script with Gemini")
             response = await self.model.generate_content_async(full_prompt)
@@ -390,17 +390,17 @@ class GeminiClient:
             # Validate script length
             word_count = len(result['script'].split())
             if word_count > Config.SCRIPT_MAX_WORDS * 1.2:  # Allow 20% overflow
-                logger.warning(f"Script length ({word_count} words) exceeds limit")
+                logger.warning("Script length ({} words) exceeds limit".format(word_count))
             
-            logger.info(f"Generated script: {word_count} words, title: {result['title'][:50]}...")
+            logger.info("Generated script: {} words, title: {}...".format(word_count, result['title'][:50]))
             return result
             
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Gemini JSON response: {text}")
-            raise AIGenerationError(f"Invalid JSON from AI: {e}")
+            logger.error("Failed to parse Gemini JSON response: {}".format(text))
+            raise AIGenerationError("Invalid JSON from AI: {}".format(e))
         except Exception as e:
-            logger.error(f"Error generating script: {e}", exc_info=True)
-            raise AIGenerationError(f"Failed to generate script: {e}")
+            logger.error("Error generating script: {}".format(e), exc_info=True)
+            raise AIGenerationError("Failed to generate script: {}".format(e))
     
     @staticmethod
     def _clean_json_response(text: str) -> str:
@@ -440,7 +440,7 @@ class ElevenLabsClient:
             TTSError: If conversion fails
         """
         try:
-            url = f"{self.base_url}/text-to-speech/{self.voice_id}"
+            url = "{}/text-to-speech/{}".format(self.base_url, self.voice_id)
             headers = {
                 "xi-api-key": self.api_key,
                 "Content-Type": "application/json"
@@ -449,20 +449,20 @@ class ElevenLabsClient:
                 "text": text
             }
             
-            logger.debug(f"Converting {len(text)} characters to speech")
+            logger.debug("Converting {} characters to speech".format(len(text)))
             response = requests.post(url, json=data, headers=headers, timeout=60)
             response.raise_for_status()
             
             audio_size = len(response.content)
-            logger.info(f"Generated audio: {audio_size / 1024:.2f} KB")
+            logger.info("Generated audio: {:.2f} KB".format(audio_size / 1024))
             return response.content
             
         except requests.exceptions.HTTPError as e:
-            logger.error(f"ElevenLabs API error: {e.response.status_code} - {e.response.text}")
-            raise TTSError(f"Text-to-speech conversion failed: {e}")
+            logger.error("ElevenLabs API error: {} - {}".format(e.response.status_code, e.response.text))
+            raise TTSError("Text-to-speech conversion failed: {}".format(e))
         except Exception as e:
-            logger.error(f"Error in text-to-speech: {e}", exc_info=True)
-            raise TTSError(f"Failed to convert text to speech: {e}")
+            logger.error("Error in text-to-speech: {}".format(e), exc_info=True)
+            raise TTSError("Failed to convert text to speech: {}".format(e))
 
 
 class HeyGenClient:
@@ -497,11 +497,11 @@ class HeyGenClient:
         try:
             # Content-Type should match the audio format, usually audio/mpeg for mp3
             headers = {
-                "x-api-key": self.api_key,
+                "X-API-KEY": self.api_key,
                 "Content-Type": "audio/mpeg" 
             }
             
-            logger.debug(f"Uploading {len(audio_data) / 1024:.2f} KB audio to HeyGen")
+            logger.debug("Uploading {:.2f} KB audio to HeyGen".format(len(audio_data) / 1024))
             
             # Note: The v2 API still uses v1 assets
             response = requests.post(
@@ -515,15 +515,15 @@ class HeyGenClient:
             result = response.json()
             # The v1/asset endpoint returns data.url and data.id
             audio_url = result["data"]["url"]
-            logger.info(f"Audio uploaded successfully: {audio_url}")
+            logger.info("Audio uploaded successfully: {}".format(audio_url))
             return audio_url
             
         except requests.exceptions.HTTPError as e:
-            logger.error(f"HeyGen upload error: {e.response.status_code} - {e.response.text}")
-            raise VideoGenerationError(f"Audio upload failed: {e}")
+            logger.error("HeyGen upload error: {} - {}".format(e.response.status_code, e.response.text))
+            raise VideoGenerationError("Audio upload failed: {}".format(e))
         except Exception as e:
-            logger.error(f"Error uploading audio: {e}", exc_info=True)
-            raise VideoGenerationError(f"Failed to upload audio: {e}")
+            logger.error("Error uploading audio: {}".format(e), exc_info=True)
+            raise VideoGenerationError("Failed to upload audio: {}".format(e))
 
     @retry(
         stop=stop_after_attempt(3),
@@ -545,10 +545,10 @@ class HeyGenClient:
             VideoGenerationError: If video generation request fails
         """
         try:
-            url = f"{self.base_url}/v2/video/generate"
+            url = "{}/v2/video/generate".format(self.base_url)
             headers = {
-                "X-Api-Key": self.api_key,
-                "Content-Type": "application/json"
+                "x-api-key": self.api_key,
+                "content-type": "application/json"
             }
             
             # V2 Payload Structure:
@@ -570,7 +570,7 @@ class HeyGenClient:
                     }
                 ],
                 "test": False, # Set to True for testing (watermarked, no credit usage)
-                "caption": False, # Set to True to generate captions
+                "caption": True, # Set to True to generate captions
                 "dimension": {
                     "width": Config.HEYGEN_VIDEO_WIDTH,
                     "height": Config.HEYGEN_VIDEO_HEIGHT
@@ -586,15 +586,15 @@ class HeyGenClient:
             
             # V2 response structure: data -> video_id
             video_id = response.json()["data"]["video_id"]
-            logger.info(f"Video generation started: {video_id}")
+            logger.info("Video generation started: {}".format(video_id))
             return video_id
             
         except requests.exceptions.HTTPError as e:
-            logger.error(f"HeyGen generation error: {e.response.status_code} - {e.response.text}")
-            raise VideoGenerationError(f"Video generation failed: {e}")
+            logger.error("HeyGen generation error: {} - {}".format(e.response.status_code, e.response.text))
+            raise VideoGenerationError("Video generation failed: {}".format(e))
         except Exception as e:
-            logger.error(f"Error generating video: {e}", exc_info=True)
-            raise VideoGenerationError(f"Failed to start video generation: {e}")
+            logger.error("Error generating video: {}".format(e), exc_info=True)
+            raise VideoGenerationError("Failed to start video generation: {}".format(e))
 
     async def wait_for_video(self, video_id: str, update_callback=None) -> str:
         """
@@ -608,7 +608,7 @@ class HeyGenClient:
             URL of completed video
         """
         # Status check is still v1/video_status.get even for v2 videos
-        url = f"{self.base_url}/v1/video_status.get"
+        url = "{}/v1/video_status.get".format(self.base_url)
         headers = {
             "X-Api-Key": self.api_key,
             "Accept": "application/json"
@@ -625,11 +625,11 @@ class HeyGenClient:
                 
                 if elapsed > Config.HEYGEN_WAIT_TIMEOUT:
                     raise VideoGenerationError(
-                        f"Video generation timed out after {Config.HEYGEN_WAIT_TIMEOUT} seconds"
+                        "Video generation timed out after {} seconds".format(Config.HEYGEN_WAIT_TIMEOUT)
                     )
                 
                 attempt += 1
-                logger.debug(f"Checking video status (attempt {attempt}, elapsed: {elapsed:.0f}s)")
+                logger.debug("Checking video status (attempt {}, elapsed: {:.0f}s)".format(attempt, elapsed))
                 
                 # Run blocking request in a thread to avoid blocking the async event loop
                 response = await asyncio.to_thread(
@@ -646,25 +646,25 @@ class HeyGenClient:
                 
                 if status == "completed":
                     video_url = data["video_url"]
-                    logger.info(f"Video completed after {elapsed:.0f}s: {video_url}")
+                    logger.info("Video completed after {:.0f}s: {}".format(elapsed, video_url))
                     return video_url
                     
                 elif status == "failed":
                     error = data.get('error', 'Unknown error')
-                    logger.error(f"HeyGen video generation failed: {error}")
-                    raise VideoGenerationError(f"Video generation failed: {error}")
+                    logger.error("HeyGen video generation failed: {}".format(error))
+                    raise VideoGenerationError("Video generation failed: {}".format(error))
                 
                 if update_callback:
-                    await update_callback(f"Video generation: {status} ({elapsed:.0f}s elapsed)")
+                    await update_callback("Video generation: {} ({:.0f}s elapsed)".format(status, elapsed))
                 
-                logger.info(f"Video status: {status}, waiting {wait_time}s...")
+                logger.info("Video status: {}, waiting {}s...".format(status, wait_time))
                 await asyncio.sleep(wait_time)
                 
                 wait_time = min(wait_time * 1.5, max_wait_time)
                 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error checking video status: {e}", exc_info=True)
-            raise VideoGenerationError(f"Failed to check video status: {e}")
+            logger.error("Error checking video status: {}".format(e), exc_info=True)
+            raise VideoGenerationError("Failed to check video status: {}".format(e))
 
 class YouTubeClient:
     """Client for YouTube video uploads."""
@@ -686,8 +686,8 @@ class YouTubeClient:
             
             if not secrets_path.exists():
                 raise YouTubeUploadError(
-                    f"YouTube client secrets file not found: {secrets_path}\n"
-                    "Please download it from Google Cloud Console"
+                    "YouTube client secrets file not found: {}\n"
+                    "Please download it from Google Cloud Console".format(secrets_path)
                 )
             
             if token_path.exists():
@@ -713,8 +713,8 @@ class YouTubeClient:
             return self.service
             
         except Exception as e:
-            logger.error(f"YouTube authentication failed: {e}", exc_info=True)
-            raise YouTubeUploadError(f"Failed to authenticate with YouTube: {e}")
+            logger.error("YouTube authentication failed: {}".format(e), exc_info=True)
+            raise YouTubeUploadError("Failed to authenticate with YouTube: {}".format(e))
 
     def upload_video(self, file_path: str, title: str, description: str) -> str:
         """
@@ -737,10 +737,10 @@ class YouTubeClient:
             # Validate file exists
             video_path = Path(file_path)
             if not video_path.exists():
-                raise YouTubeUploadError(f"Video file not found: {file_path}")
+                raise YouTubeUploadError("Video file not found: {}".format(file_path))
             
             file_size = video_path.stat().st_size
-            logger.info(f"Uploading video: {file_size / (1024*1024):.2f} MB")
+            logger.info("Uploading video: {:.2f} MB".format(file_size / (1024*1024)))
             
             body = {
                 "snippet": {
@@ -773,19 +773,19 @@ class YouTubeClient:
                 if status:
                     progress = int(status.progress() * 100)
                     if progress - last_progress >= 10:  # Log every 10%
-                        logger.info(f"Upload progress: {progress}%")
+                        logger.info("Upload progress: {}%".format(progress))
                         last_progress = progress
 
             video_id = response["id"]
-            logger.info(f"Video uploaded successfully: {video_id}")
+            logger.info("Video uploaded successfully: {}".format(video_id))
             return video_id
             
         except HttpError as e:
-            logger.error(f"YouTube API error: {e.status_code} - {e.error_details}")
-            raise YouTubeUploadError(f"YouTube upload failed: {e}")
+            logger.error("YouTube API error: {} - {}".format(e.status_code, e.error_details))
+            raise YouTubeUploadError("YouTube upload failed: {}".format(e))
         except Exception as e:
-            logger.error(f"Error uploading to YouTube: {e}", exc_info=True)
-            raise YouTubeUploadError(f"Failed to upload video: {e}")
+            logger.error("Error uploading to YouTube: {}".format(e), exc_info=True)
+            raise YouTubeUploadError("Failed to upload video: {}".format(e))
 
 
 # --- Main Workflow ---
@@ -799,7 +799,7 @@ class StructuredLogger:
         
         # Create unique log file for this session
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_file = self.log_dir / f"bot_execution_{timestamp}.json"
+        self.log_file = self.log_dir / "bot_execution_{}.json".format(timestamp)
         
         # Initialize the file
         self._write_entry({
@@ -809,7 +809,7 @@ class StructuredLogger:
                 "log_level": logging.getLevelName(logger.level)
             }
         })
-        logger.info(f"Structured logging enabled: {self.log_file}")
+        logger.info("Structured logging enabled: {}".format(self.log_file))
 
     def _write_entry(self, data: Dict[str, Any]) -> None:
         """Write a single JSON entry to the log file."""
@@ -817,7 +817,7 @@ class StructuredLogger:
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(data, default=str) + "\n")
         except Exception as e:
-            logger.error(f"Failed to write to structured log: {e}")
+            logger.error("Failed to write to structured log: {}".format(e))
 
     def log_step(self, chat_id: int, step: int, name: str, status: str, 
                  input_data: Any = None, output_data: Any = None, error: str = None) -> None:
@@ -863,7 +863,7 @@ class WorkflowManager:
             self.reddit.reddit.subreddit("test").id
             logger.info("✅ Reddit connection verified")
         except Exception as e:
-            raise ConfigurationError(f"Reddit verification failed: {e}")
+            raise ConfigurationError("Reddit verification failed: {}".format(e))
 
         # 2. Gemini
         try:
@@ -871,17 +871,17 @@ class WorkflowManager:
             self.gemini.model.generate_content("Test", generation_config={"max_output_tokens": 1})
             logger.info("✅ Gemini API verified")
         except Exception as e:
-            raise ConfigurationError(f"Gemini verification failed: {e}")
+            raise ConfigurationError("Gemini verification failed: {}".format(e))
 
         # 3. ElevenLabs
         try:
             logger.info("Checking ElevenLabs API...")
             headers = {"xi-api-key": self.elevenlabs.api_key}
-            response = requests.get(f"{self.elevenlabs.base_url}/user", headers=headers, timeout=10)
+            response = requests.get("{}/user".format(self.elevenlabs.base_url), headers=headers, timeout=10)
             response.raise_for_status()
             logger.info("✅ ElevenLabs API verified")
         except Exception as e:
-            raise ConfigurationError(f"ElevenLabs verification failed: {e}")
+            raise ConfigurationError("ElevenLabs verification failed: {}".format(e))
 
         # 4. HeyGen
         try:
@@ -891,7 +891,7 @@ class WorkflowManager:
             response.raise_for_status()
             logger.info("✅ HeyGen API verified")
         except Exception as e:
-            raise ConfigurationError(f"HeyGen verification failed: {e}")
+            raise ConfigurationError("HeyGen verification failed: {}".format(e))
 
         # 5. YouTube
         try:
@@ -899,7 +899,7 @@ class WorkflowManager:
             self.youtube._get_authenticated_service()
             logger.info("✅ YouTube credentials verified")
         except Exception as e:
-            raise ConfigurationError(f"YouTube verification failed: {e}")
+            raise ConfigurationError("YouTube verification failed: {}".format(e))
             
         logger.info("🎉 All services verified successfully!")
 
@@ -958,9 +958,9 @@ class WorkflowManager:
                 self.json_logger.log_step(chat_id, 1, "extract_link_info", "failed", error="Invalid URL format")
                 await status_message.edit_text(
                     "❌ Invalid Reddit URL format.\n\n"
-                    f"Subreddit: r/{subreddit}\n"
-                    f"Post ID: {post_id}\n\n"
-                    "Please check the link and try again."
+                    "Subreddit: r/{}\n"
+                    "Post ID: {}\n\n"
+                    "Please check the link and try again.".format(subreddit, post_id)
                 )
                 return
 
@@ -1041,10 +1041,10 @@ class WorkflowManager:
                         "✅ Step 2/6: Reddit data fetched\n"
                         "✅ Step 3/6: Script generated\n"
                         "✅ Step 4/6: Audio created\n"
-                        f"▪️ Step 5/6: {status}"
+                        "▪️ Step 5/6: {}".format(status)
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to update status message: {e}")
+                    logger.warning("Failed to update status message: {}".format(e))
             
             video_url = await self.heygen.wait_for_video(video_id, update_video_status)
             self.json_logger.log_step(chat_id, 5, "create_avatar_video", "completed", output_data={"video_url": video_url})
@@ -1066,14 +1066,14 @@ class WorkflowManager:
                 video_response = requests.get(video_url, timeout=300)
                 video_response.raise_for_status()
                 temp_file.write(video_response.content)
-                logger.info(f"Video downloaded to {temp_video_path}")
+                logger.info("Video downloaded to {}".format(temp_video_path))
             
             # Step 6: Upload to YouTube
             self.json_logger.log_step(chat_id, 6, "upload_youtube", "started", input_data={"title": title})
             youtube_id = self.youtube.upload_video(
                 temp_video_path,
                 title,
-                f"{script}\n\nSource: {link_info['link']}"
+                "{}\n\nSource: {}\n\n#Shorts".format(script, link_info['link'])
             )
             self.json_logger.log_step(chat_id, 6, "upload_youtube", "completed", output_data={"youtube_id": youtube_id})
             
@@ -1088,46 +1088,46 @@ class WorkflowManager:
             )
 
             # Final success message
-            youtube_link = f"https://www.youtube.com/watch?v={youtube_id}"
+            youtube_link = "https://www.youtube.com/watch?v={}".format(youtube_id)
             time.sleep(2)  # Brief pause before final message
             await status_message.edit_text(
                 "✅ Video uploaded successfully!\n\n"
-                f"🎬 Title: {title}\n"
-                f"🔗 Link: {youtube_link}\n\n"
-                "Thanks for using the bot!"
+                "🎬 Title: {}\n"
+                "🔗 Link: {}\n\n"
+                "Thanks for using the bot!".format(title, youtube_link)
             )
             self.json_logger.log_step(chat_id, 7, "process_complete", "success", output_data={"youtube_link": youtube_link})
 
         except RedditAPIError as e:
-            logger.error(f"Reddit API error: {e}")
-            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"RedditAPIError: {e}")
+            logger.error("Reddit API error: {}".format(e))
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error="RedditAPIError: {}".format(e))
             await self._send_error_message(status_message, chat_id, context, 
                 "Reddit Error", str(e))
         except AIGenerationError as e:
-            logger.error(f"AI generation error: {e}")
-            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"AIGenerationError: {e}")
+            logger.error("AI generation error: {}".format(e))
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error="AIGenerationError: {}".format(e))
             await self._send_error_message(status_message, chat_id, context,
                 "AI Generation Error", str(e))
         except TTSError as e:
-            logger.error(f"TTS error: {e}")
-            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"TTSError: {e}")
+            logger.error("TTS error: {}".format(e))
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error="TTSError: {}".format(e))
             await self._send_error_message(status_message, chat_id, context,
                 "Text-to-Speech Error", str(e))
         except VideoGenerationError as e:
-            logger.error(f"Video generation error: {e}")
-            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"VideoGenerationError: {e}")
+            logger.error("Video generation error: {}".format(e))
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error="VideoGenerationError: {}".format(e))
             await self._send_error_message(status_message, chat_id, context,
                 "Video Generation Error", str(e))
         except YouTubeUploadError as e:
-            logger.error(f"YouTube upload error: {e}")
-            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"YouTubeUploadError: {e}")
+            logger.error("YouTube upload error: {}".format(e))
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error="YouTubeUploadError: {}".format(e))
             await self._send_error_message(status_message, chat_id, context,
                 "YouTube Upload Error", str(e))
         except Exception as e:
-            logger.error(f"Unexpected error processing request: {e}", exc_info=True)
-            self.json_logger.log_step(chat_id, -1, "error", "failed", error=f"UnexpectedError: {e}")
+            logger.error("Unexpected error processing request: {}".format(e), exc_info=True)
+            self.json_logger.log_step(chat_id, -1, "error", "failed", error="UnexpectedError: {}".format(e))
             await self._send_error_message(status_message, chat_id, context,
-                "Unexpected Error", f"An unexpected error occurred: {str(e)}")
+                "Unexpected Error", "An unexpected error occurred: {}".format(str(e)))
         finally:
             # Cleanup
             self.active_operations[chat_id] = False
@@ -1135,9 +1135,9 @@ class WorkflowManager:
             if temp_video_path and Path(temp_video_path).exists():
                 try:
                     Path(temp_video_path).unlink()
-                    logger.info(f"Cleaned up temporary video: {temp_video_path}")
+                    logger.info("Cleaned up temporary video: {}".format(temp_video_path))
                 except Exception as e:
-                    logger.warning(f"Failed to cleanup temp file: {e}")
+                    logger.warning("Failed to cleanup temp file: {}".format(e))
     
     @staticmethod
     def _validate_reddit_url(subreddit: str, post_id: str) -> bool:
@@ -1154,9 +1154,9 @@ class WorkflowManager:
     async def _send_error_message(status_message, chat_id: int, context, error_type: str, error_detail: str):
         """Send formatted error message to user."""
         error_text = (
-            f"❌ **{error_type}**\n\n"
-            f"{error_detail}\n\n"
-            "Please try again or contact support if the issue persists."
+            "❌ {}\n\n"
+            "{}\n\n"
+            "Please try again or contact support if the issue persists.".format(error_type, error_detail)
         )
         
         if status_message:
@@ -1173,17 +1173,17 @@ class WorkflowManager:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
     welcome_message = (
-        "👋 **Welcome to Reddit to YouTube Automation Bot!**\n\n"
+        "👋 Welcome to Reddit to YouTube Automation Bot!\n\n"
         "🎥 I can turn Reddit posts into AI avatar videos and upload them to YouTube.\n\n"
-        "**How to use:**\n"
-        "1. Send me a Reddit link\n"
-        "2. Optionally add your thoughts/opinion\n"
-        "3. Wait 5-10 minutes for processing\n"
-        "4. Get your YouTube link!\n\n"
-        "**Example:**\n"
+        "How to use:\n"
+        "   1. Send me a Reddit link\n"
+        "   2. Optionally add your thoughts/opinion\n"
+        "   3. Wait 5-10 minutes for processing\n"
+        "   4. Get your YouTube link!\n\n"
+        "Example:\n"
         "`https://www.reddit.com/r/technology/comments/abc123/`\n\n"
         "`https://www.reddit.com/r/askreddit/comments/xyz789/ This is interesting because...`\n\n"
-        "**Note:** Processing uses paid APIs (ElevenLabs, HeyGen). "
+        "Note: Processing uses paid APIs (ElevenLabs, HeyGen). "
         "Make sure you have sufficient credits.\n\n"
         "Send me a Reddit link to get started!"
     )
@@ -1193,26 +1193,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command."""
     help_text = (
-        "**Reddit to YouTube Bot Help**\n\n"
-        "**Commands:**\n"
-        "• /start - Show welcome message\n"
-        "• /help - Show this help message\n\n"
-        "**Process Steps:**\n"
-        "1. Extract link from your message\n"
-        "2. Fetch Reddit post and comments\n"
-        "3. Generate script with AI\n"
-        "4. Convert to speech (ElevenLabs)\n"
-        "5. Create avatar video (HeyGen)\n"
-        "6. Upload to YouTube\n\n"
-        "**Tips:**\n"
-        "• Use posts with good discussion\n"
-        "• Processing takes 5-10 minutes\n"
-        "• Only one operation per user at a time\n"
-        "• Check your API credits before starting\n\n"
-        "**Estimated Costs:**\n"
-        "• ElevenLabs: ~$0.05-0.15 per video\n"
-        "• HeyGen: ~$0.10-0.50 per video\n"
-        "• Total: ~$0.15-0.65 per video"
+        "Reddit to YouTube Bot Help\n\n"
+        "Commands:\n"
+        "   • /start - Show welcome message\n"
+        "   • /help - Show this help message\n\n"
+        "Process Steps:\n"
+        "   1. Extract link from your message\n"
+        "   2. Fetch Reddit post and comments\n"
+        "   3. Generate script with AI\n"
+        "   4. Convert to speech (ElevenLabs)\n"
+        "   5. Create avatar video (HeyGen)\n"
+        "   6. Upload to YouTube\n\n"
+        "Tips:\n"
+        "   • Use posts with good discussion\n"
+        "   • Processing takes 5-10 minutes\n"
+        "   • Only one operation per user at a time\n"
+        "   • Check your API credits before starting\n\n"
+        "Estimated Costs:\n"
+        "   • ElevenLabs: ~$0.05-0.15 per video\n"
+        "   • HeyGen: ~$0.10-0.50 per video\n"
+        "   • Total: ~$0.15-0.65 per video"
     )
     await update.message.reply_text(help_text)
 
@@ -1247,16 +1247,16 @@ def main():
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except ConfigurationError as e:
-        logger.error(f"Configuration error: {e}")
-        print(f"\n❌ Configuration Error:\n{e}\n")
+        logger.error("Configuration error: {}".format(e))
+        print("\n❌ Configuration Error:\n{}\n".format(e))
         print("Please check your .env file. See .env.example for reference.")
         return 1
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
         return 0
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-        print(f"\n❌ Fatal Error:\n{e}\n")
+        logger.error("Fatal error: {}".format(e), exc_info=True)
+        print("\n❌ Fatal Error:\n{}\n".format(e))
         return 1
 
 
