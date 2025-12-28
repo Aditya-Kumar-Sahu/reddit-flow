@@ -39,7 +39,7 @@ Processing time: 5-10 minutes per video
 
 ```bash
 git clone <repository-url>
-cd "Reddit to youtube automation"
+cd "reddit-flow"
 ```
 
 ### 2. Create a virtual environment
