@@ -4,6 +4,10 @@ import time
 import requests
 from dotenv import load_dotenv
 
+TEMP_DIR = "temp"
+if not os.path.exists(TEMP_DIR):
+    os.makedirs(TEMP_DIR)
+
 def check_avatar_availability():
     print("Checking Avatar Availability...")
     load_dotenv()
@@ -42,11 +46,12 @@ def check_avatar_availability():
 
     available_avatars = []
     unavailable_avatars = []
+    details = []
 
     print(f"Found {len(avatars)} avatars to check.\n")
 
     for i, avatar in enumerate(avatars):
-        avatar_id = avatar.get('avatar_id')
+        avatar_id = avatar.get('id')
         # Use a fallback name if one isn't in the list source
         source_name = avatar.get('avatar_name', f'Unknown_{i}')
         
@@ -66,6 +71,7 @@ def check_avatar_availability():
                 if data_obj and 'name' in data_obj:
                     fetched_name = data_obj['name']
                     available_avatars.append(f"{fetched_name} ({avatar_id})")
+                    details.append(data_obj)
                     print(f"✅ Available: {fetched_name}")
                 else:
                     # If we get 200 OK but data is null, the ID might be deprecated or invalid
@@ -97,6 +103,17 @@ def check_avatar_availability():
     print(f"\nUnavailable Avatars ({len(unavailable_avatars)}):")
     for name in unavailable_avatars:
         print(f" - {name}")
+        
+    # print("\n" + "="*30)
+    # print("Details of Available Avatars:")
+    # print("="*30)
+    # print("\nTotal Details Retrieved: ", len(details), end="\n\n")
+    # for detail in details:
+    #     print(json.dumps(detail, indent=2))
+
+    with open(os.path.join(TEMP_DIR, "available_avatars_details.json"), "w") as f:
+        json.dump(details, f, indent=2)
+    print(f"\nDetails saved to {os.path.join(TEMP_DIR, 'available_avatars_details.json')}")
 
 if __name__ == "__main__":
     check_avatar_availability()

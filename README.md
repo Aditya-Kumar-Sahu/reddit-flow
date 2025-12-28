@@ -18,7 +18,7 @@ This Python script automates the process of converting Reddit posts into AI-gene
 
 - **Python 3.9+**
 - **Telegram Bot Token** - Get from [@BotFather](https://t.me/botfather)
-- **Reddit API Credentials** - Create an app at [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps)
+- **Reddit API Credentials** - Create an app at [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) (script type)
 - **Google Gemini API Key** - Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
 - **ElevenLabs API Key** - Sign up at [elevenlabs.io](https://elevenlabs.io)
 - **HeyGen API Key** - Sign up at [heygen.com](https://heygen.com)
@@ -72,26 +72,7 @@ copy .env.example .env
 cp .env.example .env
 ```
 
-Edit `.env` and fill in your API keys:
-
-```env
-# Required Configuration
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-REDDIT_CLIENT_ID=your_reddit_client_id
-REDDIT_CLIENT_SECRET=your_reddit_client_secret
-REDDIT_USER_AGENT=python:reddit_to_youtube:v1.0 (by /u/your_username)
-GOOGLE_API_KEY=your_google_gemini_api_key
-ELEVENLABS_API_KEY=your_elevenlabs_api_key
-ELEVENLABS_VOICE_ID=your_voice_id
-HEYGEN_API_KEY=your_heygen_api_key
-HEYGEN_AVATAR_ID=your_avatar_id
-
-# Optional - Use defaults if not specified
-YOUTUBE_CATEGORY_ID=28
-YOUTUBE_REGION_CODE=IN
-MAX_COMMENTS=20
-SCRIPT_MAX_WORDS=175
-```
+Edit `.env` and fill in your API keys. See `.env.example` for the required format.
 
 ### 5. YouTube API Setup
 
@@ -100,7 +81,7 @@ SCRIPT_MAX_WORDS=175
 3. Enable the **YouTube Data API v3**
 4. Go to **Credentials** → **Create Credentials** → **OAuth client ID**
 5. Select **Desktop app** as the application type
-6. Download the JSON file and save it as `client_secrets.json` in the project root
+6. Download the JSON file and save it as `client_secrets.json` in the project root (or update `YOUTUBE_CLIENT_SECRETS_FILE` in `.env` to point to it)
 
 ## 📱 Usage
 
@@ -143,21 +124,26 @@ On the first run, a browser window will open asking you to authorize the applica
 ```
 reddit-to-youtube-automation/
 ├── main.py                      # Core application code
+├── check_avatars.py             # Utility to check HeyGen avatars
 ├── requirements.txt             # Python dependencies
-├── pyproject.toml              # Project metadata
-├── .env                        # Configuration (not in git)
-├── .env.example                # Configuration template
-├── .gitignore                  # Git ignore patterns
-├── README.md                   # This file
-├── PROGRESS.md                 # Development progress tracker
-├── client_secrets.json         # YouTube OAuth credentials (not in git)
-├── token.json                  # YouTube session (auto-generated, not in git)
-└── idea to avatar.json         # n8n workflow reference
+├── pyproject.toml               # Project metadata
+├── .env                         # Configuration (not in git)
+├── .env.example                 # Configuration template
+├── .gitignore                   # Git ignore patterns
+├── README.md                    # This file
+├── PROGRESS.md                  # Development progress tracker
+├── client_secrets.json          # YouTube OAuth credentials (not in git)
+├── token.json                   # YouTube session (auto-generated, not in git)
+├── avatar.json                  # Avatar data
+├── idea to avatar.json          # n8n workflow reference
+├── logs/                        # Application logs
+├── temp/                        # Temporary files during processing
+└── tests/                       # Unit tests
 ```
 
 ## 🔧 Configuration Options
 
-All configuration can be set via environment variables:
+All configuration can be set via environment variables in `.env`:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -165,6 +151,8 @@ All configuration can be set via environment variables:
 | `REDDIT_CLIENT_ID` | ✅ | - | Reddit API client ID |
 | `REDDIT_CLIENT_SECRET` | ✅ | - | Reddit API secret |
 | `REDDIT_USER_AGENT` | ✅ | - | Reddit API user agent |
+| `REDDIT_USERNAME` | ✅ | - | Reddit username |
+| `REDDIT_PASSWORD` | ✅ | - | Reddit password |
 | `GOOGLE_API_KEY` | ✅ | - | Google Gemini API key |
 | `ELEVENLABS_API_KEY` | ✅ | - | ElevenLabs API key |
 | `ELEVENLABS_VOICE_ID` | ✅ | - | ElevenLabs voice ID |
@@ -174,10 +162,10 @@ All configuration can be set via environment variables:
 | `YOUTUBE_CATEGORY_ID` | ❌ | `28` | YouTube category (28 = Science & Technology) |
 | `YOUTUBE_REGION_CODE` | ❌ | `IN` | YouTube region code |
 | `MAX_COMMENTS` | ❌ | `20` | Maximum comments to include |
-| `SCRIPT_MAX_WORDS` | ❌ | `175` | Maximum script length |
+| `SCRIPT_MAX_WORDS` | ❌ | `200` | Maximum script length |
 | `HEYGEN_WAIT_TIMEOUT` | ❌ | `1800` | Video generation timeout (seconds) |
-| `HEYGEN_VIDEO_WIDTH` | ❌ | `1280` | Video width in pixels |
-| `HEYGEN_VIDEO_HEIGHT` | ❌ | `720` | Video height in pixels |
+| `HEYGEN_VIDEO_WIDTH` | ❌ | `1080` | Video width in pixels (default 9:16) |
+| `HEYGEN_VIDEO_HEIGHT` | ❌ | `1920` | Video height in pixels (default 9:16) |
 | `LOG_LEVEL` | ❌ | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ## 🐛 Troubleshooting
