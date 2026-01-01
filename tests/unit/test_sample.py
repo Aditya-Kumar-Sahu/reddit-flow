@@ -27,6 +27,7 @@ class TestPytestInfrastructure:
     def test_mock_env_vars(self, mock_env_vars):
         """Verify mock environment variables are set."""
         import os
+
         assert os.getenv("TELEGRAM_BOT_TOKEN") == "test_telegram_token"
         assert os.getenv("REDDIT_CLIENT_ID") == "test_reddit_client_id"
 
@@ -55,6 +56,7 @@ class TestAsyncSupport:
     async def test_async_function(self):
         """Verify async tests work correctly."""
         import asyncio
+
         await asyncio.sleep(0.01)
         assert True
 
@@ -63,10 +65,10 @@ class TestAsyncSupport:
     async def test_async_mock(self):
         """Verify async mocking works correctly."""
         from unittest.mock import AsyncMock
-        
+
         mock_func = AsyncMock(return_value="mocked_result")
         result = await mock_func()
-        
+
         assert result == "mocked_result"
         mock_func.assert_called_once()
 

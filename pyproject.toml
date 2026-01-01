@@ -114,3 +114,10 @@ exclude_lines = [
 ]
 fail_under = 80
 show_missing = true
+
+# =============================================================================
+# Bandit - Security Linter
+# =============================================================================
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = ["B101"]  # Skip assert warnings (used in tests)
