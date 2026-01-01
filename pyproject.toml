@@ -3,10 +3,114 @@ name = "reddit-to-youtube-automation"
 version = "0.1.0"
 description = "Automates conversion of Reddit posts into AI-generated avatar videos and uploads them to YouTube"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = []
 authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
 license = {text = "MIT"}
 keywords = ["reddit", "youtube", "automation", "ai", "video-generation"]
+
+# =============================================================================
+# Black - Code Formatter
+# =============================================================================
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.git
+    | \.venv
+    | venv
+    | __pycache__
+    | \.pytest_cache
+    | build
+    | dist
+)/
+'''
+
+# =============================================================================
+# isort - Import Sorter
+# =============================================================================
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["reddit_flow"]
+known_third_party = ["praw", "google", "telegram", "requests", "pydantic", "tenacity"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+skip = [".venv", "venv", "__pycache__", ".git"]
+skip_gitignore = true
+
+# =============================================================================
+# MyPy - Static Type Checker
+# =============================================================================
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Start permissive, tighten later
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+pretty = true
+
+# Ignore missing imports for third-party libraries without stubs
+[[tool.mypy.overrides]]
+module = [
+    "praw.*",
+    "google.generativeai.*",
+    "telegram.*",
+    "googleapiclient.*",
+    "google_auth_oauthlib.*",
+    "tenacity.*",
+]
+ignore_missing_imports = true
+
+# =============================================================================
+# Pytest Configuration (extended)
+# =============================================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (require API credentials)",
+    "e2e: End-to-end tests (full workflow)",
+    "slow: Tests that take longer than 10 seconds",
+]
+addopts = "-v --tb=short --strict-markers -ra"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# =============================================================================
+# Coverage Configuration
+# =============================================================================
+[tool.coverage.run]
+source = ["src/reddit_flow", "main.py"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+fail_under = 80
+show_missing = true
