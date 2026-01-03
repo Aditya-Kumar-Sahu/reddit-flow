@@ -12,9 +12,11 @@ All clients inherit from BaseClient and implement a consistent interface.
 """
 
 from reddit_flow.clients.base import AsyncClientMixin, BaseClient, HTTPClientMixin
+from reddit_flow.clients.reddit_client import RedditClient
 
 __all__ = [
     "BaseClient",
     "HTTPClientMixin",
     "AsyncClientMixin",
+    "RedditClient",
 ]
