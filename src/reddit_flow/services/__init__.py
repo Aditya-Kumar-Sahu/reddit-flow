@@ -7,3 +7,9 @@ This module provides service classes that implement the core business logic:
 - MediaService: Audio/video generation
 - UploadService: YouTube upload
 """
+
+from reddit_flow.services.content_service import ContentService
+
+__all__ = [
+    "ContentService",
+]

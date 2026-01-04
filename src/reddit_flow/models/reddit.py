@@ -114,8 +114,8 @@ class LinkInfo(BaseModel):
 
     Attributes:
         link: Full Reddit post URL.
-        subreddit: Extracted subreddit name.
-        post_id: Extracted Reddit post ID.
+        subReddit: Extracted subreddit name.
+        postId: Extracted Reddit post ID.
         user_text: Optional additional text from the user.
     """
 
