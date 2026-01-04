@@ -230,6 +230,23 @@ class YouTubeUploadError(APIError):
     pass
 
 
+class MediaGenerationError(APIError):
+    """
+    Raised when the media generation workflow fails.
+
+    This exception covers failures in the combined audio/video
+    generation pipeline that aren't specific to TTS or video generation.
+
+    Example:
+        >>> raise MediaGenerationError(
+        ...     "Media generation pipeline failed",
+        ...     details={"step": "audio_upload", "error": "Network timeout"}
+        ... )
+    """
+
+    pass
+
+
 # =============================================================================
 # Retryable Errors
 # =============================================================================
