@@ -28,7 +28,6 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-
 # =============================================================================
 # Constants
 # =============================================================================
@@ -157,9 +156,7 @@ def configure_logging(
         if not json_logs and sys.stdout.isatty():
             console_handler.setFormatter(ColoredFormatter())
         else:
-            console_handler.setFormatter(
-                logging.Formatter(DEFAULT_LOG_FORMAT, DEFAULT_DATE_FORMAT)
-            )
+            console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT, DEFAULT_DATE_FORMAT))
 
         root_logger.addHandler(console_handler)
 
@@ -180,9 +177,7 @@ def configure_logging(
         if json_logs:
             file_handler.setFormatter(JsonFormatter())
         else:
-            file_handler.setFormatter(
-                logging.Formatter(DEFAULT_LOG_FORMAT, DEFAULT_DATE_FORMAT)
-            )
+            file_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT, DEFAULT_DATE_FORMAT))
 
         root_logger.addHandler(file_handler)
 
