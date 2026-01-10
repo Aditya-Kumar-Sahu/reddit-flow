@@ -95,8 +95,8 @@ class ContentService:
             logger.debug(f"Parsed URL: r/{subreddit}, post={post_id}")
             return LinkInfo(
                 link=url,
-                subReddit=subreddit,
-                postId=post_id,
+                subreddit=subreddit,
+                post_id=post_id,
             )
 
         # Try short URL pattern (redd.it) - not fully supported

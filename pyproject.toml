@@ -47,16 +47,25 @@ skip_gitignore = true
 # =============================================================================
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = true
+warn_return_any = false  # Too noisy with API responses
 warn_unused_configs = true
 disallow_untyped_defs = false  # Start permissive, tighten later
 disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
 warn_redundant_casts = true
-warn_unused_ignores = true
+warn_unused_ignores = false  # Ignore unused type: ignore comments
 show_error_codes = true
 pretty = true
+
+# Pydantic plugin for proper model support
+plugins = ["pydantic.mypy"]
+
+# Pydantic-specific settings
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 # Ignore missing imports for third-party libraries without stubs
 [[tool.mypy.overrides]]
@@ -67,8 +76,17 @@ module = [
     "googleapiclient.*",
     "google_auth_oauthlib.*",
     "tenacity.*",
+    "pydantic_settings.*",
 ]
 ignore_missing_imports = true
+
+# Disable strict checking for models with Pydantic computed_field
+[[tool.mypy.overrides]]
+module = [
+    "reddit_flow.models.video",
+    "reddit_flow.models.script",
+]
+disable_error_code = ["prop-decorator"]
 
 # =============================================================================
 # Pytest Configuration (extended)

@@ -265,7 +265,7 @@ class AsyncClientMixin:
         import time
 
         start_time = time.time()
-        interval = initial_interval
+        interval: float = initial_interval
 
         while time.time() - start_time < timeout:
             is_complete, result = await check_fn()

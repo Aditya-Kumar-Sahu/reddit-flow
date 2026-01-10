@@ -312,7 +312,7 @@ class GeminiClient(BaseClient):
             "link": link_info.link,
             "subReddit": link_info.subreddit,
             "postId": link_info.post_id,
-            "text": link_info.user_text,
+            "text": link_info.user_text or "",
         }
 
     def _build_link_extraction_prompt(self, message_text: str) -> str:

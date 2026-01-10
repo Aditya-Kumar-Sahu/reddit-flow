@@ -435,13 +435,13 @@ class CircuitBreaker:
         exc_type: Optional[Type[BaseException]],
         exc_val: Optional[BaseException],
         exc_tb: Any,
-    ) -> bool:
+    ) -> None:
         """Context manager exit."""
         if exc_val is None:
             self.record_success()
         elif isinstance(exc_val, Exception):
             self.record_failure(exc_val)
-        return False  # Don't suppress exceptions
+        # Don't suppress exceptions (implicitly returns None)
 
     @classmethod
     def get(cls, name: str) -> Optional["CircuitBreaker"]:

@@ -127,6 +127,8 @@ class RedditClient(BaseClient):
         """
         try:
             # Simple check - try to access a known subreddit
+            if self.reddit is None:
+                raise RedditAPIError("Reddit client not initialized")
             self.reddit.subreddit("test").id
             return True
         except Exception as e:
@@ -157,6 +159,8 @@ class RedditClient(BaseClient):
         """
         try:
             logger.info(f"Fetching post r/{subreddit_name}/{post_id}")
+            if self.reddit is None:
+                raise RedditAPIError("Reddit client not initialized")
             submission = self.reddit.submission(id=post_id)
 
             # Load comment replies (limited to avoid excessive API calls)

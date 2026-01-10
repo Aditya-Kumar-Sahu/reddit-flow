@@ -7,7 +7,7 @@ including HeyGen video generation and YouTube upload metadata.
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, computed_field, field_validator
 
@@ -220,20 +220,22 @@ class YouTubeUploadRequest(BaseModel):
         Returns:
             Dictionary formatted for YouTube Data API v3.
         """
-        body = {
-            "snippet": {
-                "title": self.title,
-                "description": self.description,
-                "categoryId": self.category_id,
-            },
+        snippet: dict[str, Any] = {
+            "title": self.title,
+            "description": self.description,
+            "categoryId": self.category_id,
+        }
+
+        if self.tags:
+            snippet["tags"] = self.tags
+
+        body: dict[str, Any] = {
+            "snippet": snippet,
             "status": {
                 "privacyStatus": self.privacy_status,
                 "selfDeclaredMadeForKids": self.made_for_kids,
             },
         }
-
-        if self.tags:
-            body["snippet"]["tags"] = self.tags
 
         return body
 

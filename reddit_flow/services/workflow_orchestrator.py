@@ -388,6 +388,9 @@ class WorkflowOrchestrator:
             await update_callback("Step 2/5: Fetching Reddit content...")
 
         link_info = result.link_info
+        if link_info is None:
+            raise RedditFlowError("Cannot fetch content: link_info is None")
+
         logger.debug(f"Step 2: Fetching r/{link_info.subreddit}/{link_info.post_id}")
 
         try:
@@ -436,6 +439,9 @@ class WorkflowOrchestrator:
             await update_callback("Step 3/5: Generating AI script...")
 
         post = result.post
+        if post is None:
+            raise RedditFlowError("Cannot generate script: post is None")
+
         logger.debug(f"Step 3: Generating script for post '{post.id}'")
 
         try:
@@ -485,6 +491,9 @@ class WorkflowOrchestrator:
             await update_callback("Step 4/5: Generating audio and video...")
 
         script = result.script
+        if script is None:
+            raise RedditFlowError("Cannot generate media: script is None")
+
         logger.debug(f"Step 4: Generating media for script '{script.title[:30]}...'")
 
         try:
@@ -509,7 +518,8 @@ class WorkflowOrchestrator:
             )
             result.steps.append(step_result)
 
-            logger.info(f"Step 4 complete: Video generated, URL={media_result.video_url[:50]}...")
+            video_url_preview = media_result.video_url[:50] if media_result.video_url else "N/A"
+            logger.info(f"Step 4 complete: Video generated, URL={video_url_preview}...")
 
         except (TTSError, VideoGenerationError, MediaGenerationError) as e:
             step_result = self._create_step_result(
@@ -537,6 +547,14 @@ class WorkflowOrchestrator:
 
         script = result.script
         media_result = result.media_result
+        link_info = result.link_info
+
+        if script is None:
+            raise RedditFlowError("Cannot upload: script is None")
+        if media_result is None or media_result.video_url is None:
+            raise RedditFlowError("Cannot upload: media_result or video_url is None")
+        if link_info is None:
+            raise RedditFlowError("Cannot upload: link_info is None")
 
         logger.debug("Step 5: Uploading video to YouTube")
 
@@ -548,7 +566,7 @@ class WorkflowOrchestrator:
                 video_url=media_result.video_url,
                 script=script,
                 additional_description=additional_description,
-                tags=["#Shorts", "Reddit", result.link_info.subreddit],
+                tags=["#Shorts", "Reddit", link_info.subreddit],
                 keep_local_file=keep_local_file,
             )
             result.upload_result = upload_result
@@ -692,11 +710,12 @@ class WorkflowOrchestrator:
             result.status = WorkflowStatus.COMPLETED
             result.completed_at = datetime.now()
 
+            script_title = result.script.title if result.script else "Unknown"
             logger.info(
-                f"Script-only workflow {workflow_id} complete: " f"'{result.script.title[:30]}...'"
+                f"Script-only workflow {workflow_id} complete: " f"'{script_title[:30]}...'"
             )
 
-            if update_callback:
+            if update_callback and result.script:
                 await update_callback(f"✅ Script generated: {result.script.title}")
 
         except Exception as e:

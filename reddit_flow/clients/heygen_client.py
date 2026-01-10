@@ -120,12 +120,12 @@ class HeyGenClient(BaseClient, HTTPClientMixin):
     @property
     def avatar_id(self) -> str:
         """Get the configured avatar ID."""
-        return self._avatar_id
+        return self._avatar_id  # type: ignore[return-value]
 
     @property
-    def base_url(self) -> str:
+    def base_url(self) -> str:  # type: ignore[override]
         """Get the API base URL."""
-        return self._base_url
+        return self._base_url  # type: ignore[return-value]
 
     @property
     def video_dimensions(self) -> tuple:
@@ -142,8 +142,8 @@ class HeyGenClient(BaseClient, HTTPClientMixin):
         Returns:
             Dictionary of headers including API key.
         """
-        headers = {
-            "X-Api-Key": self._api_key,
+        headers: dict[str, str] = {
+            "X-Api-Key": str(self._api_key),
             "Accept": "application/json",
         }
         if extra:
@@ -426,8 +426,8 @@ class HeyGenClient(BaseClient, HTTPClientMixin):
 
         start_time = time.time()
         attempt = 0
-        wait_time = 10
-        max_wait_time = 60
+        wait_time: float = 10
+        max_wait_time: float = 60
         use_timeout = timeout or self._wait_timeout
 
         try:

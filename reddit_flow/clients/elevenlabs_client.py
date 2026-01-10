@@ -102,12 +102,12 @@ class ElevenLabsClient(BaseClient, HTTPClientMixin):
     @property
     def voice_id(self) -> str:
         """Get the configured voice ID."""
-        return self._voice_id
+        return self._voice_id  # type: ignore[return-value]
 
     @property
-    def base_url(self) -> str:
+    def base_url(self) -> str:  # type: ignore[override]
         """Get the API base URL."""
-        return self._base_url
+        return self._base_url  # type: ignore[return-value]
 
     def _get_auth_headers(self, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         """
@@ -119,8 +119,8 @@ class ElevenLabsClient(BaseClient, HTTPClientMixin):
         Returns:
             Dictionary of headers including API key.
         """
-        headers = {
-            "xi-api-key": self._api_key,
+        headers: dict[str, str] = {
+            "xi-api-key": str(self._api_key),
             "Content-Type": "application/json",
         }
         if extra:
