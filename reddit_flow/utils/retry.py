@@ -173,6 +173,7 @@ def with_retry(
         config = DEFAULT_RETRY_CONFIG
 
     def decorator(func: F) -> F:
+        """Apply retry logic to the decorated function."""
         # Build stop condition
         stop_conditions: list[Union[stop_after_attempt, stop_after_delay]] = [
             stop_after_attempt(config.max_attempts)
@@ -386,6 +387,7 @@ class CircuitBreaker:
 
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            """Execute function through circuit breaker."""
             return self.call(func, *args, **kwargs)
 
         return wrapper  # type: ignore
@@ -509,6 +511,7 @@ class TimeoutError(RedditFlowError):
         timeout: float,
         details: Optional[dict[str, Any]] = None,
     ):
+        """Initialize timeout error with duration info."""
         details = details or {}
         details["timeout_seconds"] = timeout
         super().__init__(message, details)
@@ -545,6 +548,7 @@ def with_timeout(
     completed = threading.Event()
 
     def target():
+        """Execute function in thread and capture result."""
         nonlocal result, exception
         try:
             result = func(*args, **kwargs)
@@ -616,8 +620,11 @@ def timeout_decorator(
     """
 
     def decorator(func: F) -> F:
+        """Apply timeout to the decorated function."""
+
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            """Execute function with timeout."""
             try:
                 return with_timeout(func, timeout, *args, **kwargs)
             except TimeoutError as e:

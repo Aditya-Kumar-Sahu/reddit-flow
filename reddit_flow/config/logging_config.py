@@ -93,6 +93,7 @@ class ColoredFormatter(logging.Formatter):
     RESET = "\033[0m"
 
     def __init__(self, fmt: Optional[str] = None, datefmt: Optional[str] = None):
+        """Initialize colored formatter with optional format strings."""
         super().__init__(fmt or DEFAULT_LOG_FORMAT, datefmt or DEFAULT_DATE_FORMAT)
 
     def format(self, record: logging.LogRecord) -> str:
