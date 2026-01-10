@@ -1,0 +1,144 @@
+# GitHub Actions Integration Tests Workflow
+# Runs integration tests against real APIs (manual trigger only)
+# Requires API credentials to be set as repository secrets
+
+name: Integration Tests
+
+on:
+  # Manual trigger with inputs
+  workflow_dispatch:
+    inputs:
+      test_reddit:
+        description: "Run Reddit integration tests"
+        type: boolean
+        default: true
+      test_gemini:
+        description: "Run Gemini integration tests"
+        type: boolean
+        default: true
+      test_elevenlabs:
+        description: "Run ElevenLabs integration tests"
+        type: boolean
+        default: true
+      test_heygen:
+        description: "Run HeyGen integration tests"
+        type: boolean
+        default: true
+      test_youtube:
+        description: "Run YouTube integration tests"
+        type: boolean
+        default: false
+
+  # Run monthly to catch API changes
+  schedule:
+    - cron: "0 11 1 * *"  # 1st of every month at 11:00 AM UTC
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ==========================================================================
+  # Integration Tests
+  # ==========================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+
+    # Only run if we have the necessary secrets
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Create .env file from secrets
+        env:
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+          REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
+          REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          HEYGEN_API_KEY: ${{ secrets.HEYGEN_API_KEY }}
+          HEYGEN_AVATAR_ID: ${{ secrets.HEYGEN_AVATAR_ID }}
+          YOUTUBE_CLIENT_SECRETS: ${{ secrets.YOUTUBE_CLIENT_SECRETS }}
+        run: |
+          cat << EOF > .env
+          # Reddit API
+          REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+          REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+          REDDIT_USER_AGENT=${REDDIT_USER_AGENT}
+          REDDIT_USERNAME=${REDDIT_USERNAME}
+          REDDIT_PASSWORD=${REDDIT_PASSWORD}
+
+          # Gemini AI
+          GEMINI_API_KEY=${GEMINI_API_KEY}
+
+          # ElevenLabs TTS
+          ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+
+          # HeyGen Video
+          HEYGEN_API_KEY=${HEYGEN_API_KEY}
+          HEYGEN_AVATAR_ID=${HEYGEN_AVATAR_ID}
+
+          # YouTube (OAuth tokens stored as JSON)
+          YOUTUBE_CLIENT_SECRETS=${YOUTUBE_CLIENT_SECRETS}
+          EOF
+
+      - name: Run Reddit integration tests
+        if: ${{ github.event.inputs.test_reddit == 'true' || github.event_name == 'schedule' }}
+        run: |
+          pytest tests/integration/test_reddit_integration.py -v --tb=short --timeout=60
+        continue-on-error: true
+
+      - name: Run Gemini integration tests
+        if: ${{ github.event.inputs.test_gemini == 'true' || github.event_name == 'schedule' }}
+        run: |
+          pytest tests/integration/test_gemini_integration.py -v --tb=short --timeout=120
+        continue-on-error: true
+
+      - name: Run ElevenLabs integration tests
+        if: ${{ github.event.inputs.test_elevenlabs == 'true' || github.event_name == 'schedule' }}
+        run: |
+          pytest tests/integration/test_elevenlabs_integration.py -v --tb=short --timeout=60
+        continue-on-error: true
+
+      - name: Run HeyGen integration tests
+        if: ${{ github.event.inputs.test_heygen == 'true' || github.event_name == 'schedule' }}
+        run: |
+          pytest tests/integration/test_heygen_integration.py -v --tb=short --timeout=120 -m "not costly"
+        continue-on-error: true
+
+      - name: Run YouTube integration tests
+        if: ${{ github.event.inputs.test_youtube == 'true' }}
+        run: |
+          pytest tests/integration/test_youtube_integration.py -v --tb=short --timeout=60 -m "not costly"
+        continue-on-error: true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f .env
+          rm -f token.json
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: |
+            .pytest_cache/
+          retention-days: 7
