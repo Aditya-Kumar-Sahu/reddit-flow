@@ -122,24 +122,85 @@ On the first run, a browser window will open asking you to authorize the applica
 ## 📁 Project Structure
 
 ```
-reddit-to-youtube-automation/
-├── main.py                      # Core application code
-├── check_avatars.py             # Utility to check HeyGen avatars
-├── requirements.txt             # Python dependencies
-├── pyproject.toml               # Project metadata
-├── .env                         # Configuration (not in git)
-├── .env.example                 # Configuration template
-├── .gitignore                   # Git ignore patterns
-├── README.md                    # This file
-├── PROGRESS.md                  # Development progress tracker
-├── client_secrets.json          # YouTube OAuth credentials (not in git)
-├── token.json                   # YouTube session (auto-generated, not in git)
-├── avatar.json                  # Avatar data
-├── idea to avatar.json          # n8n workflow reference
-├── logs/                        # Application logs
-├── temp/                        # Temporary files during processing
-└── tests/                       # Unit tests
+reddit-flow/
+├── main.py                      # Application entry point
+├── reddit_flow/                 # Main package
+│   ├── __init__.py              # Package exports
+│   ├── bot/                     # Telegram bot
+│   │   ├── handlers.py          # Command handlers
+│   │   └── workflow.py          # Bot workflow logic
+│   ├── clients/                 # API clients
+│   │   ├── base.py              # Abstract base client
+│   │   ├── reddit_client.py     # Reddit API (PRAW)
+│   │   ├── gemini_client.py     # Google Gemini AI
+│   │   ├── elevenlabs_client.py # ElevenLabs TTS
+│   │   ├── heygen_client.py     # HeyGen video generation
+│   │   └── youtube_client.py    # YouTube Data API
+│   ├── config/                  # Configuration
+│   │   ├── settings.py          # Pydantic-based settings
+│   │   └── logging_config.py    # Logging setup
+│   ├── exceptions/              # Custom exceptions
+│   │   └── errors.py            # Exception hierarchy
+│   ├── models/                  # Data models
+│   │   ├── reddit.py            # RedditPost, LinkInfo
+│   │   ├── script.py            # VideoScript
+│   │   └── video.py             # VideoRequest, YouTubeUpload*
+│   ├── services/                # Business logic
+│   │   ├── content_service.py   # Reddit content fetching
+│   │   ├── script_service.py    # AI script generation
+│   │   ├── media_service.py     # Audio/video generation
+│   │   ├── upload_service.py    # YouTube upload
+│   │   └── workflow_orchestrator.py
+│   └── utils/                   # Utilities
+│       ├── retry.py             # Retry, CircuitBreaker
+│       ├── structured_logger.py # JSON logging
+│       └── validators.py        # URL validation
+├── tests/                       # Test suite
+│   ├── unit/                    # 625+ unit tests
+│   ├── integration/             # API integration tests
+│   └── e2e/                     # End-to-end tests
+├── docs/                        # Documentation
+│   ├── ARCHITECTURE.md          # System architecture
+│   ├── MODULE_DEPENDENCIES.md   # Module relationships
+│   ├── SERVICE_LAYER.md         # Service design
+│   └── EXCEPTION_HANDLING.md    # Error handling guide
+├── requirements.txt             # Dependencies
+├── pyproject.toml               # Project & tool config
+├── .pre-commit-config.yaml      # Pre-commit hooks
+└── .github/workflows/           # CI/CD automation
 ```
+
+## 🏗️ Architecture
+
+Reddit-Flow uses a modular, service-oriented architecture:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Entry Points                          │
+│                (Telegram Bot / CLI)                      │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+                         ▼
+┌──────────────────────────────────────────────────────────┐
+│                 WorkflowOrchestrator                     │
+│    (Coordinates: Content → Script → Media → Upload)      │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+        ┌────────────────┼────────────────┐
+        ▼                ▼                ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ ContentSvc   │ │ ScriptSvc    │ │ MediaSvc     │
+│ (Reddit)     │ │ (Gemini AI)  │ │ (TTS/Video)  │
+└──────────────┘ └──────────────┘ └──────────────┘
+```
+
+**Key Features:**
+- **Dependency Injection**: All services receive clients via constructor
+- **Pydantic Models**: Type-safe data validation throughout
+- **Retry & Circuit Breaker**: Resilient API interactions
+- **93%+ Test Coverage**: 650+ tests (unit, integration, E2E)
+
+For detailed architecture documentation, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 🔧 Configuration Options
 
@@ -247,9 +308,64 @@ Contributions are welcome! Please:
 4. Add/update tests if applicable
 5. Submit a pull request
 
+### Development Setup
+
+```bash
+# Create virtual environment
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/Mac
+
+# Install all dependencies (including dev tools)
+pip install -r requirements.txt
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+### Running Tests
+
+```bash
+# Run unit tests (fast, mocked)
+pytest tests/unit/ -v
+
+# Run E2E tests (mocked APIs)
+pytest tests/e2e/ -v
+
+# Run with coverage report
+pytest --cov=reddit_flow --cov-report=html
+
+# Run integration tests (requires API keys)
+pytest tests/integration/ -v --run-integration
+```
+
+### Code Quality
+
+```bash
+# Type checking
+mypy reddit_flow/
+
+# Linting
+flake8 reddit_flow/
+
+# Format code
+black reddit_flow/ tests/
+isort reddit_flow/ tests/
+```
+
+### Test Markers
+
+| Marker | Description |
+|--------|-------------|
+| `@pytest.mark.unit` | Fast, isolated tests |
+| `@pytest.mark.integration` | Requires API credentials |
+| `@pytest.mark.e2e` | Full workflow tests |
+| `@pytest.mark.slow` | Tests taking >10s |
+| `@pytest.mark.costly` | Consumes API quota |
+
 ## 📄 License
 
-MIT License - See LICENSE file for details
+MIT License - See [LICENSE](LICENSE) file for details
 
 ## 🙏 Acknowledgments
 

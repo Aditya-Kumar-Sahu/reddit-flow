@@ -10,11 +10,12 @@ Welcome to the reddit-flow technical documentation.
 | [MODULE_DEPENDENCIES.md](MODULE_DEPENDENCIES.md) | Module dependency graph and import rules |
 | [SERVICE_LAYER.md](SERVICE_LAYER.md) | Service design patterns, API reference, usage examples |
 | [EXCEPTION_HANDLING.md](EXCEPTION_HANDLING.md) | Error handling strategy, exception hierarchy, best practices |
+| [DEVELOPER_SETUP.md](DEVELOPER_SETUP.md) | Development environment setup, testing, code quality |
 
 ## Quick Links
 
 - **Getting Started:** See [../README.md](../README.md)
-- **Developer Setup:** See [DEVELOPER_SETUP.md](DEVELOPER_SETUP.md) *(coming soon)*
+- **Developer Setup:** See [DEVELOPER_SETUP.md](DEVELOPER_SETUP.md)
 - **API Reference:** See individual module docstrings
 
 ## Architecture at a Glance
