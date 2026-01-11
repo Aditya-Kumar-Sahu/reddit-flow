@@ -88,6 +88,19 @@ module = [
 ]
 disable_error_code = ["prop-decorator"]
 
+# Exclude legacy monolithic main.py from type checking
+[[tool.mypy.overrides]]
+module = "main_legacy"
+ignore_errors = true
+
+# Exclude tests from strict type checking (test code is more permissive)
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+    "conftest",
+]
+ignore_errors = true
+
 # =============================================================================
 # Pytest Configuration (extended)
 # =============================================================================

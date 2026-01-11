@@ -6,3 +6,12 @@ This module provides the Telegram bot interface including:
 - Message handlers
 - Workflow orchestration
 """
+
+from reddit_flow.bot.handlers import help_command, start
+from reddit_flow.bot.workflow import WorkflowManager
+
+__all__ = [
+    "start",
+    "help_command",
+    "WorkflowManager",
+]
