@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional
 import requests
 
 from reddit_flow.clients import YouTubeClient
-from reddit_flow.config import get_logger
+from reddit_flow.config import Settings, get_logger
 from reddit_flow.exceptions import YouTubeUploadError
 from reddit_flow.models import VideoScript, YouTubeUploadRequest, YouTubeUploadResponse
 
@@ -74,6 +74,7 @@ class UploadService:
         youtube_client: Optional[YouTubeClient] = None,
         default_category_id: str = "22",
         default_privacy: str = "public",
+        settings: Optional[Settings] = None,
     ) -> None:
         """
         Initialize UploadService.
@@ -82,10 +83,12 @@ class UploadService:
             youtube_client: Optional YouTubeClient instance.
             default_category_id: Default YouTube category (22 = People & Blogs).
             default_privacy: Default privacy status (public, private, unlisted).
+            settings: Optional Settings instance.
         """
         self._youtube_client = youtube_client
         self._default_category_id = default_category_id
         self._default_privacy = default_privacy
+        self.settings = settings or Settings()
         logger.info(
             f"UploadService initialized (category={default_category_id}, "
             f"privacy={default_privacy})"
@@ -128,6 +131,14 @@ class UploadService:
         Raises:
             YouTubeUploadError: If upload fails.
         """
+        if self.settings.env != "prod":
+            logger.info(f"Skipping YouTube upload in {self.settings.env} mode")
+            return YouTubeUploadResponse(
+                video_id="test_video_id",
+                title=title,
+                url="https://youtube.com/watch?v=test_video_id",
+            )
+
         # Validate file exists
         video_path = Path(file_path)
         if not video_path.exists():
@@ -217,7 +228,7 @@ class UploadService:
         progress_callback: Optional[Callable[[int], None]] = None,
     ) -> UploadResult:
         """
-        Download a video from URL and upload to YouTube.
+        Download video from URL and upload to YouTube.
 
         Downloads the video to a temporary file, uploads it to YouTube,
         and optionally keeps the local file.
@@ -237,6 +248,17 @@ class UploadService:
         Raises:
             YouTubeUploadError: If download or upload fails.
         """
+        # Skip download/upload in non-prod environments
+        if self.settings.env != "prod":
+            logger.info(f"Skipping video download/upload in {self.settings.env} mode")
+            return UploadResult(
+                video_id="test_video_id",
+                title=title,
+                url="https://youtube.com/watch?v=test_video_id",
+                studio_url="https://studio.youtube.com/video/test_video_id/edit",
+                local_file_path=None,
+            )
+
         # Download video to temporary file
         local_path = self._download_video(video_url)
 

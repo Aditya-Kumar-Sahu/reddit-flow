@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 from reddit_flow.clients import ElevenLabsClient, HeyGenClient
-from reddit_flow.config import get_logger
+from reddit_flow.config import Settings, get_logger
 from reddit_flow.exceptions import MediaGenerationError, TTSError, VideoGenerationError
 from reddit_flow.models import AudioAsset, VideoScript
 
@@ -59,6 +59,7 @@ class MediaService:
         self,
         elevenlabs_client: Optional[ElevenLabsClient] = None,
         heygen_client: Optional[HeyGenClient] = None,
+        settings: Optional[Settings] = None,
     ) -> None:
         """
         Initialize MediaService.
@@ -66,9 +67,11 @@ class MediaService:
         Args:
             elevenlabs_client: Optional ElevenLabsClient instance.
             heygen_client: Optional HeyGenClient instance.
+            settings: Optional Settings instance.
         """
         self._elevenlabs_client = elevenlabs_client
         self._heygen_client = heygen_client
+        self.settings = settings or Settings()
         logger.info("MediaService initialized")
 
     @property
@@ -95,7 +98,11 @@ class MediaService:
         Returns:
             Audio data as bytes (MP3 format).
 
-        Raises:
+        Raiself.settings.env != "prod":
+            logger.info(f"Skipping audio generation in {self.settings.env} mode")
+            return b"dummy_audio_bytes"
+
+        if ses:
             TTSError: If audio generation fails.
         """
         if not text or not text.strip():
@@ -233,6 +240,18 @@ class MediaService:
             VideoGenerationError: If video generation fails.
             MediaGenerationError: If overall workflow fails.
         """
+        if self.settings.env != "prod":
+            logger.info(f"Skipping video generation in {self.settings.env} mode")
+            return MediaGenerationResult(
+                audio_data=b"dummy_audio",
+                audio_asset=AudioAsset(
+                    asset_id="test_asset",
+                    url="https://example.com/test_audio.mp3",
+                ),
+                video_id="test_video_id",
+                video_url="https://example.com/test_video.mp4",
+            )
+
         try:
             # Step 1: Generate audio from script
             if update_callback:

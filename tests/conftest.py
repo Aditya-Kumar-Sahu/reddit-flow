@@ -47,6 +47,7 @@ def mock_env_vars(monkeypatch) -> Dict[str, str]:
             pass
     """
     test_vars = {
+        "ENV": "test",
         "TELEGRAM_BOT_TOKEN": "test_telegram_token",
         "REDDIT_CLIENT_ID": "test_reddit_client_id",
         "REDDIT_CLIENT_SECRET": "test_reddit_client_secret",
@@ -65,6 +66,24 @@ def mock_env_vars(monkeypatch) -> Dict[str, str]:
         monkeypatch.setenv(key, value)
 
     return test_vars
+
+
+@pytest.fixture
+def mock_prod_settings():
+    """
+    Create a mock Settings object with env='prod' for testing service logic.
+
+    Use this fixture when you need services to execute their real logic
+    instead of returning dummy test data.
+
+    Usage:
+        def test_service_logic(mock_prod_settings):
+            service = MyService(settings=mock_prod_settings)
+            # Service will now execute real logic with mocked clients
+    """
+    settings = MagicMock()
+    settings.env = "prod"
+    return settings
 
 
 # =============================================================================

@@ -49,12 +49,13 @@ def mock_youtube_client():
 
 
 @pytest.fixture
-def upload_service(mock_youtube_client):
+def upload_service(mock_youtube_client, mock_prod_settings):
     """Create an UploadService with mock client."""
     return UploadService(
         youtube_client=mock_youtube_client,
         default_category_id="22",
         default_privacy="public",
+        settings=mock_prod_settings,
     )
 
 

@@ -33,12 +33,13 @@ def mock_gemini_client():
 
 
 @pytest.fixture
-def script_service(mock_gemini_client):
+def script_service(mock_gemini_client, mock_prod_settings):
     """Create a ScriptService with mock client."""
     return ScriptService(
         gemini_client=mock_gemini_client,
         max_words=250,
         max_comments=10,
+        settings=mock_prod_settings,
     )
 
 
@@ -673,12 +674,14 @@ class TestScriptServiceIntegration:
         self,
         mock_gemini_client,
         sample_video_script,
+        mock_prod_settings,
     ):
         """Test that many comments are limited correctly."""
         with patch("reddit_flow.services.script_service.logger"):
             service = ScriptService(
                 gemini_client=mock_gemini_client,
                 max_comments=5,
+                settings=mock_prod_settings,
             )
 
         post = RedditPost(

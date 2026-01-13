@@ -57,12 +57,35 @@ class WorkflowManager:
         """
         Verify all external services are accessible.
 
+        Only runs verification checks when ENV=prod using verify_service() method
+        on each client. In other environments, just logs initialized status.
         Logs the status of each service check.
         """
+        if self.settings.env != "prod":
+            logger.info(f"Skipping service verification in {self.settings.env} environment")
+            return
+
         logger.info("Verifying external services...")
-        # Services are lazily loaded, so this just logs
-        # In production, you'd call verify methods on each client
-        logger.info("Services verification complete")
+
+        try:
+            # Verify Content Service (Reddit)
+            self.orchestrator.content_service.reddit_client.verify_service()
+
+            # Verify Script Service (Gemini)
+            self.orchestrator.script_service.gemini_client.verify_service()
+
+            # Verify Media Service (ElevenLabs, HeyGen)
+            self.orchestrator.media_service.elevenlabs_client.verify_service()
+            self.orchestrator.media_service.heygen_client.verify_service()
+
+            # Verify Upload Service (YouTube)
+            self.orchestrator.upload_service.youtube_client.verify_service()
+
+            logger.info("Services verification complete")
+        except Exception as e:
+            # Log specific error is handled in verify_service, but we log workflow failure here
+            logger.error(f"Service verification failed: {e}")
+            raise
 
     def _extract_url_and_opinion(self, text: str) -> tuple[str, Optional[str]]:
         """

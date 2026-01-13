@@ -16,6 +16,7 @@ Example usage:
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
     Optional fields have sensible defaults.
 
     Attributes:
+        env: Environment mode ("test" or "prod"). Default: "prod"
         telegram_bot_token: Telegram bot API token
         reddit_client_id: Reddit API client ID
         reddit_client_secret: Reddit API client secret
@@ -62,6 +64,9 @@ class Settings(BaseSettings):
     # =========================================================================
     # Required Configuration - Must be set via environment
     # =========================================================================
+
+    # Environment settings
+    env: Literal["test", "prod"] = "prod"
 
     # Telegram
     telegram_bot_token: SecretStr = Field(

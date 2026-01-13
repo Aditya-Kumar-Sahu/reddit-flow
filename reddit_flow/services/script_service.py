@@ -8,7 +8,7 @@ using the Gemini AI client.
 from typing import Any, Dict, List, Optional
 
 from reddit_flow.clients import GeminiClient
-from reddit_flow.config import get_logger
+from reddit_flow.config import Settings, get_logger
 from reddit_flow.exceptions import AIGenerationError, ContentError
 from reddit_flow.models import RedditComment, RedditPost, VideoScript
 
@@ -42,6 +42,7 @@ class ScriptService:
         gemini_client: Optional[GeminiClient] = None,
         max_words: int = 250,
         max_comments: int = 10,
+        settings: Optional[Settings] = None,
     ) -> None:
         """
         Initialize ScriptService.
@@ -51,10 +52,12 @@ class ScriptService:
                           a new client will be created when needed.
             max_words: Maximum word count for generated scripts.
             max_comments: Maximum number of comments to include in context.
+            settings: Optional Settings instance.
         """
         self._gemini_client = gemini_client
         self._max_words = max_words
         self._max_comments = max_comments
+        self.settings = settings or Settings()
         logger.info(
             f"ScriptService initialized (max_words={max_words}, max_comments={max_comments})"
         )
@@ -88,6 +91,16 @@ class ScriptService:
             AIGenerationError: If script generation fails.
             ContentError: If post content is invalid.
         """
+        if self.settings.env != "prod":
+            logger.info(f"Skipping AI script generation in {self.settings.env} mode")
+            return VideoScript(
+                title=f"TEST: {post.title}",
+                script="This is a test script generated in test mode. " * 5,
+                source_post_id=post.id,
+                source_subreddit=post.subreddit,
+                user_opinion=user_opinion,
+            )
+
         try:
             # Validate post has content
             post_text = self._build_post_text(post)

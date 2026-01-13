@@ -19,6 +19,7 @@ Usage:
     logger.info("Application started")
 """
 
+import copy
 import json
 import logging
 import os
@@ -33,9 +34,11 @@ from typing import Any, Dict, Optional
 # =============================================================================
 
 DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+DEFAULT_SIMPLE_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 DEFAULT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_LOG_DIR = "logs"
 DEFAULT_LOG_FILE = "reddit_flow.log"
+DEFAULT_JSON_LOG_FILE = "reddit_flow_log.json"
 MAX_LOG_SIZE = 10 * 1024 * 1024  # 10 MB
 BACKUP_COUNT = 5
 
@@ -80,6 +83,7 @@ class ColoredFormatter(logging.Formatter):
     Colored formatter for console output during development.
 
     Uses ANSI escape codes for colorized log levels.
+    Shows module name only for WARNING, ERROR, and CRITICAL levels.
     """
 
     # ANSI color codes
@@ -94,10 +98,23 @@ class ColoredFormatter(logging.Formatter):
 
     def __init__(self, fmt: Optional[str] = None, datefmt: Optional[str] = None):
         """Initialize colored formatter with optional format strings."""
-        super().__init__(fmt or DEFAULT_LOG_FORMAT, datefmt or DEFAULT_DATE_FORMAT)
+        # Store both formats
+        self._simple_fmt = DEFAULT_SIMPLE_LOG_FORMAT
+        self._detailed_fmt = fmt or DEFAULT_LOG_FORMAT
+        self._datefmt = datefmt or DEFAULT_DATE_FORMAT
+        super().__init__(self._simple_fmt, self._datefmt)
 
     def format(self, record: logging.LogRecord) -> str:
-        """Format log record with colors."""
+        """Format log record with colors and conditional module name."""
+        # Create a copy of the record to prevent side effects on other handlers
+        record = copy.copy(record)
+
+        # Choose format based on log level - show module name only for warnings/errors
+        if record.levelno >= logging.WARNING:
+            self._style._fmt = self._detailed_fmt
+        else:
+            self._style._fmt = self._simple_fmt
+
         # Only colorize if output is a terminal
         if sys.stdout.isatty():
             color = self.COLORS.get(record.levelname, "")
@@ -114,7 +131,7 @@ class ColoredFormatter(logging.Formatter):
 def configure_logging(
     level: str = "INFO",
     log_dir: str = DEFAULT_LOG_DIR,
-    log_file: str = DEFAULT_LOG_FILE,
+    log_file: Optional[str] = None,
     json_logs: bool = False,
     console_output: bool = True,
     file_output: bool = True,
@@ -154,7 +171,7 @@ def configure_logging(
         console_handler.setLevel(log_level)
 
         # Use colored formatter for console in development
-        if not json_logs and sys.stdout.isatty():
+        if sys.stdout.isatty():
             console_handler.setFormatter(ColoredFormatter())
         else:
             console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT, DEFAULT_DATE_FORMAT))
@@ -165,6 +182,9 @@ def configure_logging(
     if file_output:
         log_path = Path(log_dir)
         log_path.mkdir(parents=True, exist_ok=True)
+
+        if log_file is None:
+            log_file = DEFAULT_JSON_LOG_FILE if json_logs else DEFAULT_LOG_FILE
 
         file_handler = RotatingFileHandler(
             log_path / log_file,

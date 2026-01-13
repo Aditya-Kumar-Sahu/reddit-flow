@@ -37,6 +37,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/help - Detailed help & costs\n\n"
         "Ready when you are! Just send a Reddit link 🚀"
     )
+    if update.effective_user:
+        logger.info(
+            "User %s (%s) started the bot", update.effective_user.id, update.effective_user.username
+        )
+
     if update.message:
         await update.message.reply_text(welcome_message)
 
@@ -51,6 +56,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         update: Telegram update object.
         context: Telegram context object.
     """
+    if update.effective_user:
+        logger.info(
+            "User %s (%s) requested help", update.effective_user.id, update.effective_user.username
+        )
+
     help_text = (
         "📖 Reddit-to-YouTube Bot Help\n\n"
         "What I Do:\n"

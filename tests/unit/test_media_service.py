@@ -57,11 +57,12 @@ def mock_heygen_client():
 
 
 @pytest.fixture
-def media_service(mock_elevenlabs_client, mock_heygen_client):
+def media_service(mock_elevenlabs_client, mock_heygen_client, mock_prod_settings):
     """Create a MediaService with mock clients."""
     return MediaService(
         elevenlabs_client=mock_elevenlabs_client,
         heygen_client=mock_heygen_client,
+        settings=mock_prod_settings,
     )
 
 

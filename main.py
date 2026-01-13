@@ -12,6 +12,8 @@ Environment Variables:
     See .env.example for required configuration.
 """
 
+# Set up logging
+import os
 import sys
 
 from telegram import Update
@@ -21,8 +23,9 @@ from reddit_flow.bot import WorkflowManager, help_command, start
 from reddit_flow.config import Settings, configure_logging, get_logger
 from reddit_flow.exceptions import ConfigurationError
 
-# Set up logging
-configure_logging()
+env = os.getenv("ENV", "prod").lower()
+log_level = "DEBUG" if env == "test" else "INFO"
+configure_logging(level=log_level, json_logs=True)
 logger = get_logger(__name__)
 
 
