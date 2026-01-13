@@ -38,3 +38,6 @@ REFACTORING_PLAN.md
 
 # Old test files
 old_tests/
+
+# Dependency files
+requirements.in
