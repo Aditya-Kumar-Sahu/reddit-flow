@@ -8,7 +8,7 @@ annotated-types==0.7.0
     # via
     #   -r requirements.in
     #   pydantic
-anyio==4.12.0
+anyio==4.12.1
     # via
     #   -r requirements.in
     #   httpx
@@ -32,7 +32,7 @@ build==1.4.0
     # via
     #   -r requirements.in
     #   pip-tools
-cachetools==6.2.2
+cachetools==6.2.4
     # via
     #   -r requirements.in
     #   google-auth
@@ -95,7 +95,7 @@ execnet==2.1.2
     # via
     #   -r requirements.in
     #   pytest-xdist
-filelock==3.20.1
+filelock==3.20.3
     # via
     #   -r requirements.in
     #   safety
@@ -110,21 +110,21 @@ ghp-import==2.1.0
     # via
     #   -r requirements.in
     #   mkdocs
-google-ai-generativelanguage==0.6.15
+google-ai-generativelanguage==0.10.0
     # via
     #   -r requirements.in
     #   google-generativeai
-google-api-core[grpc]==2.28.1
+google-api-core[grpc]==2.29.0
     # via
     #   -r requirements.in
     #   google-ai-generativelanguage
     #   google-api-python-client
     #   google-generativeai
-google-api-python-client==2.111.0
+google-api-python-client==2.188.0
     # via
     #   -r requirements.in
     #   google-generativeai
-google-auth==2.43.0
+google-auth==2.47.0
     # via
     #   -r requirements.in
     #   google-ai-generativelanguage
@@ -133,13 +133,13 @@ google-auth==2.43.0
     #   google-auth-httplib2
     #   google-auth-oauthlib
     #   google-generativeai
-google-auth-httplib2==0.2.0
+google-auth-httplib2==0.3.0
     # via
     #   -r requirements.in
     #   google-api-python-client
-google-auth-oauthlib==1.2.0
+google-auth-oauthlib==1.2.3
     # via -r requirements.in
-google-generativeai==0.8.5
+google-generativeai==0.8.6
     # via -r requirements.in
 googleapis-common-protos==1.72.0
     # via
@@ -155,7 +155,7 @@ grpcio==1.76.0
     #   -r requirements.in
     #   google-api-core
     #   grpcio-status
-grpcio-status==1.62.3
+grpcio-status==1.76.0
     # via
     #   -r requirements.in
     #   google-api-core
@@ -167,17 +167,17 @@ httpcore==1.0.9
     # via
     #   -r requirements.in
     #   httpx
-httplib2==0.31.0
+httplib2==0.31.1
     # via
     #   -r requirements.in
     #   google-api-python-client
     #   google-auth-httplib2
-httpx==0.25.2
+httpx==0.28.1
     # via
     #   -r requirements.in
     #   python-telegram-bot
     #   safety
-identify==2.6.15
+identify==2.6.16
     # via
     #   -r requirements.in
     #   pre-commit
@@ -204,7 +204,7 @@ joblib==1.5.3
     # via
     #   -r requirements.in
     #   nltk
-librt==0.7.5
+librt==0.7.8
     # via
     #   -r requirements.in
     #   mypy
@@ -331,7 +331,7 @@ prawcore==2.4.0
     #   praw
 pre-commit==4.5.1
     # via -r requirements.in
-proto-plus==1.26.1
+proto-plus==1.27.0
     # via
     #   -r requirements.in
     #   google-ai-generativelanguage
@@ -393,7 +393,7 @@ pymdown-extensions==10.20
     #   -r requirements.in
     #   mkdocs-material
     #   mkdocstrings
-pyparsing==3.2.5
+pyparsing==3.3.1
     # via
     #   -r requirements.in
     #   httplib2
@@ -424,7 +424,7 @@ python-dateutil==2.9.0.post0
     # via
     #   -r requirements.in
     #   ghp-import
-python-dotenv==1.0.0
+python-dotenv==1.2.1
     # via
     #   -r requirements.in
     #   pydantic-settings
@@ -480,7 +480,7 @@ ruamel-yaml==0.19.1
     #   safety-schemas
 safety==3.7.0
     # via -r requirements.in
-safety-schemas==0.0.16
+safety-schemas==0.0.17
     # via
     #   -r requirements.in
     #   safety
@@ -510,7 +510,7 @@ tenacity==8.2.3
     # via
     #   -r requirements.in
     #   safety
-tomlkit==0.13.3
+tomlkit==0.14.0
     # via
     #   -r requirements.in
     #   safety
@@ -551,12 +551,12 @@ uritemplate==4.2.0
     # via
     #   -r requirements.in
     #   google-api-python-client
-urllib3==2.6.2
+urllib3==2.6.3
     # via
     #   -r requirements.in
     #   requests
     #   types-requests
-virtualenv==20.35.4
+virtualenv==20.36.1
     # via
     #   -r requirements.in
     #   pre-commit
