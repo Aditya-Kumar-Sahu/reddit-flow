@@ -6,7 +6,7 @@ This module provides the WorkflowManager for coordinating the entire process.
 
 import asyncio
 import re
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -16,6 +16,16 @@ from reddit_flow.exceptions import InvalidURLError, RedditFlowError
 from reddit_flow.services.workflow_orchestrator import WorkflowOrchestrator, WorkflowStatus
 
 logger = get_logger(__name__)
+
+# Workflow step definitions
+WORKFLOW_STEPS: Dict[int, str] = {
+    1: "Parsing URL",
+    2: "Fetching Reddit content",
+    3: "Generating AI script",
+    4: "Generating audio",
+    5: "Generating video",
+    6: "Uploading to YouTube",
+}
 
 
 class WorkflowManager:
@@ -36,6 +46,16 @@ class WorkflowManager:
         r"(?:https?://)?(?:www\.|old\.)?reddit\.com/r/([^/]+)/comments/([a-z0-9]+)", re.IGNORECASE
     )
 
+    # Step mapping from orchestrator messages to step numbers
+    STEP_MAPPING: Dict[str, int] = {
+        "Step 1/5": 1,
+        "Step 2/5": 2,
+        "Step 3/5": 3,
+        "Step 4/5: Generating audio": 4,
+        "Step 4/5: Generating video": 5,
+        "Step 5/5": 6,
+    }
+
     def __init__(
         self,
         orchestrator: Optional[WorkflowOrchestrator] = None,
@@ -52,6 +72,51 @@ class WorkflowManager:
         self.settings = settings or Settings()
         self.active_users: Set[int] = set()
         logger.info("WorkflowManager initialized")
+
+    def _format_progress_message(self, current_step: int, extra_info: str = "") -> str:
+        """
+        Format progress message showing all steps with status indicators.
+
+        Args:
+            current_step: The step currently in progress (1-6).
+            extra_info: Optional extra information to append.
+
+        Returns:
+            Formatted progress message with all steps.
+        """
+        total_steps = len(WORKFLOW_STEPS)
+        lines = ["🚀 Starting video generation...\n"]
+
+        for step_num, step_name in WORKFLOW_STEPS.items():
+            if step_num < current_step:
+                # Completed step
+                lines.append(f"✅ Step {step_num}/{total_steps}: {step_name}")
+            elif step_num == current_step:
+                # Current step (in progress)
+                lines.append(f"▪️ Step {step_num}/{total_steps}: {step_name}...")
+            else:
+                # Pending step
+                lines.append(f"⬜ Step {step_num}/{total_steps}: {step_name}")
+
+        if extra_info:
+            lines.append(f"\n{extra_info}")
+
+        return "\n".join(lines)
+
+    def _parse_step_from_message(self, message: str) -> int:
+        """
+        Parse step number from orchestrator callback message.
+
+        Args:
+            message: The callback message from orchestrator.
+
+        Returns:
+            Step number (1-6).
+        """
+        for pattern, step_num in self.STEP_MAPPING.items():
+            if pattern in message:
+                return step_num
+        return 1  # Default to step 1
 
     def verify_services(self) -> None:
         """
@@ -184,21 +249,30 @@ class WorkflowManager:
         # Mark user as active
         self.active_users.add(user_id)
         status_msg = None
+        current_step = 1
 
         try:
-            # Send initial status
+            # Send initial status with all steps
+            extra_info = f"📎 URL: {url[:50]}...\n💭 Opinion: {'Yes' if user_opinion else 'None'}"
             status_msg = await update.message.reply_text(
-                "🚀 Starting video generation...\n\n"
-                f"📎 URL: {url[:50]}...\n"
-                f"💭 Opinion: {'Yes' if user_opinion else 'None'}\n\n"
-                "Step 1/5: Parsing URL..."
+                self._format_progress_message(
+                    current_step=1,
+                    extra_info=extra_info,
+                )
             )
 
             # Define progress callback
             async def update_status(step_message: str) -> None:
+                nonlocal current_step
                 if status_msg:
                     try:
-                        await status_msg.edit_text(step_message)
+                        # Parse the step from the orchestrator message
+                        new_step = self._parse_step_from_message(step_message)
+                        if new_step > current_step:
+                            current_step = new_step
+                        await status_msg.edit_text(
+                            self._format_progress_message(current_step=current_step)
+                        )
                     except Exception:
                         pass  # nosec B110
 
@@ -211,13 +285,19 @@ class WorkflowManager:
 
             # Send final result
             if result.status == WorkflowStatus.COMPLETED and result.youtube_url:
-                success_message = (
-                    "✅ Video successfully created and uploaded!\n\n"
-                    f"🎬 YouTube URL: {result.youtube_url}\n"
-                    f"📊 Processing time: {result.duration_seconds:.1f}s\n\n"
-                    "Thank you for using Reddit-to-YouTube Bot!"
+                # Show all steps completed
+                total_steps = len(WORKFLOW_STEPS)
+                completed_lines = ["✅ Video successfully created and uploaded!\n"]
+                for step_num, step_name in WORKFLOW_STEPS.items():
+                    completed_lines.append(f"✅ Step {step_num}/{total_steps}: {step_name}")
+                completed_lines.extend(
+                    [
+                        f"\n🎬 YouTube URL: {result.youtube_url}",
+                        f"📊 Processing time: {result.duration_seconds:.1f}s",
+                        "\nThank you for using Reddit-to-YouTube Bot!",
+                    ]
                 )
-                await self._send_status(update, success_message, status_msg)
+                await self._send_status(update, "\n".join(completed_lines), status_msg)
             else:
                 error_msg = result.error or "Unknown error occurred"
                 await self._send_status(
