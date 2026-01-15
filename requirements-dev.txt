@@ -1,0 +1,5 @@
+# Development dependencies for reddit-flow
+# All dependencies are now in requirements.txt
+# This file is kept for backwards compatibility
+
+-r requirements.txt

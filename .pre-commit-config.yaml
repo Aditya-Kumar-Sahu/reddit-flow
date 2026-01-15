@@ -1,0 +1,121 @@
+# Pre-commit hooks configuration for reddit-flow
+# See https://pre-commit.com for more information
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+
+# Default settings
+default_language_version:
+  python: python3.11
+
+default_stages: [pre-commit]
+
+repos:
+  # =============================================================================
+  # General hooks
+  # =============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # Prevent large files from being committed
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+
+      # Check for files that would conflict on case-insensitive filesystems
+      - id: check-case-conflict
+
+      # Check for merge conflict markers
+      - id: check-merge-conflict
+
+      # Check YAML files for syntax errors
+      - id: check-yaml
+        args: ['--unsafe']  # Allow custom tags
+
+      # Check JSON files for syntax errors
+      - id: check-json
+
+      # Check TOML files for syntax errors
+      - id: check-toml
+
+      # Ensure files end with a newline
+      - id: end-of-file-fixer
+        exclude: ^(logs/|temp/)
+
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        exclude: ^(logs/|temp/)
+
+      # Check for debugger imports
+      - id: debug-statements
+
+      # Detect private keys
+      - id: detect-private-key
+
+  # =============================================================================
+  # Python code formatting
+  # =============================================================================
+  - repo: https://github.com/psf/black
+    rev: 24.1.0
+    hooks:
+      - id: black
+        language_version: python3.11
+        args: ['--config', 'pyproject.toml']
+
+  # =============================================================================
+  # Import sorting
+  # =============================================================================
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ['--settings-path', 'pyproject.toml']
+
+  # =============================================================================
+  # Linting
+  # =============================================================================
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        additional_dependencies:
+          - flake8-docstrings>=1.7.0
+        args: ['--config', 'setup.cfg']
+
+  # =============================================================================
+  # Type checking (optional - can be slow)
+  # =============================================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        args: ['--config-file', 'pyproject.toml']
+        additional_dependencies:
+          - types-requests>=2.31.0
+        # Only run on changed Python files, not the entire codebase
+        pass_filenames: true
+        # Skip during initial setup (can enable later)
+        stages: [manual]
+
+  # =============================================================================
+  # Security checks
+  # =============================================================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.7
+    hooks:
+      - id: bandit
+        args: ['-c', 'pyproject.toml']
+        additional_dependencies: ['bandit[toml]']
+        # Skip test files
+        exclude: ^tests/
+
+# =============================================================================
+# CI configuration
+# =============================================================================
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: [mypy]  # Skip slow hooks in CI
+  submodules: false
