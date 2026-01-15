@@ -36,16 +36,25 @@ def load_test_environment():
     yield
 
 
-@pytest.fixture
-def mock_env_vars(monkeypatch) -> Dict[str, str]:
+@pytest.fixture(autouse=True)
+def mock_env_vars(request, monkeypatch) -> Dict[str, str]:
     """
     Provide mock environment variables for testing.
+
+    This fixture is auto-used for all tests EXCEPT integration tests,
+    ensuring ENV="test" is set for unit and e2e tests. Integration tests
+    use real API credentials loaded from the environment.
 
     Usage:
         def test_something(mock_env_vars):
             # Environment is already configured with test values
             pass
     """
+    # Skip mocking for integration tests - they need real credentials
+    if "integration" in str(request.fspath):
+        yield {}
+        return
+
     test_vars = {
         "ENV": "test",
         "TELEGRAM_BOT_TOKEN": "test_telegram_token",
@@ -65,7 +74,7 @@ def mock_env_vars(monkeypatch) -> Dict[str, str]:
     for key, value in test_vars.items():
         monkeypatch.setenv(key, value)
 
-    return test_vars
+    yield test_vars
 
 
 @pytest.fixture

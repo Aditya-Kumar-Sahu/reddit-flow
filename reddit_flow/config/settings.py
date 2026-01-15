@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from reddit_flow.exceptions import ConfigurationError
@@ -198,8 +198,11 @@ class Settings(BaseSettings):
 
     @field_validator("youtube_client_secrets_file")
     @classmethod
-    def validate_youtube_secrets_file(cls, v: str) -> str:
-        """Validate YouTube client secrets file exists."""
+    def validate_youtube_secrets_file(cls, v: str, info: ValidationInfo) -> str:
+        """Validate YouTube client secrets file exists (only in prod mode)."""
+        # Skip file existence check in test mode
+        if info.data.get("env") == "test":
+            return v
         path = Path(v)
         if not path.exists():
             raise ValueError(
