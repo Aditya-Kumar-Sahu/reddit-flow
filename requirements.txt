@@ -36,7 +36,7 @@ cachetools==6.2.2
     # via
     #   -r requirements.in
     #   google-auth
-certifi==2025.11.12
+certifi==2026.1.4
     # via
     #   -r requirements.in
     #   httpcore
