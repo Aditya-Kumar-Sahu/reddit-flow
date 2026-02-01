@@ -358,7 +358,7 @@ pycodestyle==2.14.0
     # via
     #   -r requirements.in
     #   flake8
-pycparser==2.23
+pycparser==3.0
     # via
     #   -r requirements.in
     #   cffi
