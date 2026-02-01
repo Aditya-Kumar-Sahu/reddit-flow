@@ -336,7 +336,7 @@ proto-plus==1.26.1
     #   -r requirements.in
     #   google-ai-generativelanguage
     #   google-api-core
-protobuf==4.25.8
+protobuf==6.33.5
     # via
     #   -r requirements.in
     #   google-ai-generativelanguage
