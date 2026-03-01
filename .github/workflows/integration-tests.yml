@@ -135,7 +135,7 @@ jobs:
           rm -f token.json
 
       - name: Upload test results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: integration-test-results
