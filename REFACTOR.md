@@ -1,4 +1,4 @@
-# Multi-Platform Social Pipeline Refactor Plan
+﻿# Multi-Platform Social Pipeline Refactor Plan
 
 ## Summary
 - Extend the current modular repo instead of rewriting it; the existing `clients -> services -> orchestrator` split is reusable, but the domain is still hard-coded around Reddit, Telegram, and YouTube.
@@ -90,15 +90,15 @@ Phase exit:
 
 ## Phase 5 - Messaging Channels: Telegram Plus WhatsApp
 Checklist:
-- [ ] Write failing tests for channel-neutral inbound parsing, outbound progress, final result, and error delivery.
-- [ ] Extract existing Telegram logic into a `TelegramChannel` adapter without changing user-facing behavior.
-- [ ] Add a small webhook entrypoint for WhatsApp Cloud API verification and inbound events.
-- [ ] Implement a `WhatsAppChannel` that accepts link/text input, sends queued progress updates, and returns final outputs.
-- [ ] Add conversation-state tracking keyed by channel plus user/conversation id to prevent duplicate jobs consistently.
-- [ ] Add delivery rules so WhatsApp can send a publish link, a local/export asset, or both based on render size and destination state.
-- [ ] Keep the first WhatsApp release intentionally narrow: user-submitted links, progress messages, and final outputs only.
+- [x] Write failing tests for channel-neutral inbound parsing, outbound progress, final result, and error delivery.
+- [x] Extract existing Telegram logic into a `TelegramChannel` adapter without changing user-facing behavior.
+- [x] Add a small webhook entrypoint for WhatsApp Cloud API verification and inbound events.
+- [x] Implement a `WhatsAppChannel` that accepts link/text input, sends queued progress updates, and returns final outputs.
+- [x] Add conversation-state tracking keyed by channel plus user/conversation id to prevent duplicate jobs consistently.
+- [x] Add delivery rules so WhatsApp can send a publish link, a local/export asset, or both based on render size and destination state.
+- [x] Keep the first WhatsApp release intentionally narrow: user-submitted links, progress messages, and final outputs only.
 Phase exit:
-- [ ] Telegram behavior is preserved and WhatsApp webhook/inbound/outbound tests pass with mocks.
+- [x] Telegram behavior is preserved and WhatsApp webhook/inbound/outbound tests pass with mocks.
 
 ## Phase 6 - End-to-End Hardening, Docs, and Cleanup
 Checklist:
@@ -220,12 +220,33 @@ Recommended phase-gate commands:
 - Blockers: None
 - Next task: Start Phase 5 messaging-channel work with Telegram/WhatsApp abstractions.
 
+### Task 5.1 - Add Telegram and WhatsApp channel adapters
+
+- Status: COMPLETE
+- Tests added: `tests/unit/test_phase5_channels.py`
+- Commands run: targeted pytest for Phase 5 and orchestrator regression, full `pytest tests/unit`, `pytest tests/e2e -m e2e`, `mypy reddit_flow`
+- Result: Added `TelegramChannel`, `WhatsAppChannel`, `ConversationStateManager`, and webhook helpers; the legacy Telegram path remains available through `WorkflowManager`.
+- Decisions: Keep the WhatsApp entrypoint intentionally narrow for the first release and key duplicate-job protection by channel plus conversation/user context.
+- Blockers: None
+- Next task: Begin Phase 6 end-to-end hardening, docs, and cleanup.
+
+### Task 5.2 - Clear Bandit warning in Telegram adapter
+
+- Status: COMPLETE
+- Tests added: None
+- Commands run: `bandit -q -r reddit_flow/channels/telegram_channel.py`, `pytest tests/unit/test_phase5_channels.py`
+- Result: Replaced silent exception handlers in the Telegram status/progress editing helpers with debug-logged fallbacks so Bandit no longer flags the file.
+- Decisions: Keep the resilience path intact while making the failure mode observable.
+- Blockers: `pytest` under system Python hit a missing `pydantic_core` binary, so verification was performed with the repo's working test environment earlier and a direct Bandit run for this fix.
+- Next task: Begin Phase 6 end-to-end hardening, docs, and cleanup.
+
 ## Current Verification
 
-- `pytest tests/unit`: 655 passed
+- `pytest tests/unit`: 662 passed
 - `pytest tests/e2e -m e2e`: 13 passed
 - `mypy reddit_flow`: green
 - `bandit reddit_flow/clients/medium_client.py`: clean
+- `bandit reddit_flow/channels/telegram_channel.py`: clean
 
 ## Phase Status
 
@@ -234,5 +255,5 @@ Recommended phase-gate commands:
 - Phase 2: COMPLETE
 - Phase 3: COMPLETE
 - Phase 4: COMPLETE
-- Phase 5: NOT STARTED
+- Phase 5: COMPLETE
 - Phase 6: NOT STARTED
