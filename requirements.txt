@@ -523,7 +523,7 @@ typer==0.21.1
     # via
     #   -r requirements.in
     #   safety
-types-requests==2.32.4.20250913
+types-requests==2.32.4.20260107
     # via -r requirements.in
 typing-extensions==4.15.0
     # via
