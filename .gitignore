@@ -37,6 +37,7 @@ logs/
 
 # Progress tracking
 PROGRESS.md
+REFACTOR.md
 REFACTORING_PLAN.md
 
 # Old test files

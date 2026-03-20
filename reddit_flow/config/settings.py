@@ -16,10 +16,10 @@ Example usage:
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from reddit_flow.exceptions import ConfigurationError
 
@@ -193,6 +193,104 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
+    # Multi-platform pipeline settings
+    # =========================================================================
+
+    enable_medium: bool = Field(
+        default=False,
+        description="Enable Medium ingestion adapters",
+    )
+    enable_instagram_publish: bool = Field(
+        default=False,
+        description="Enable direct Instagram publishing",
+    )
+    enable_instagram_export: bool = Field(
+        default=False,
+        description="Enable Instagram export bundle generation",
+    )
+    enable_whatsapp: bool = Field(
+        default=False,
+        description="Enable WhatsApp messaging channel",
+    )
+    enable_provider_fallbacks: bool = Field(
+        default=True,
+        description="Enable fallback provider resolution",
+    )
+
+    enabled_sources: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["reddit"],
+        description="Enabled canonical source adapters",
+    )
+    enabled_destinations: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["youtube"],
+        description="Enabled publish destinations",
+    )
+    default_script_provider: str = Field(
+        default="gemini",
+        description="Default script provider name",
+    )
+    default_voice_provider: str = Field(
+        default="elevenlabs",
+        description="Default voice provider name",
+    )
+    default_video_provider: str = Field(
+        default="heygen",
+        description="Default video provider name",
+    )
+    script_provider_fallbacks: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        description="Fallback script providers in resolution order",
+    )
+    voice_provider_fallbacks: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        description="Fallback voice providers in resolution order",
+    )
+    video_provider_fallbacks: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        description="Fallback video providers in resolution order",
+    )
+
+    medium_user_agent: str = Field(
+        default="reddit-flow/0.1",
+        description="User agent used for Medium content retrieval",
+    )
+    medium_request_timeout: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Timeout for Medium feed/article requests in seconds",
+    )
+
+    meta_app_id: str | None = Field(
+        default=None,
+        description="Meta app ID for Instagram/WhatsApp integrations",
+    )
+    meta_app_secret: SecretStr | None = Field(
+        default=None,
+        description="Meta app secret",
+    )
+    instagram_access_token: SecretStr | None = Field(
+        default=None,
+        description="Instagram Graph API access token",
+    )
+    instagram_business_account_id: str | None = Field(
+        default=None,
+        description="Instagram business account ID",
+    )
+    whatsapp_access_token: SecretStr | None = Field(
+        default=None,
+        description="WhatsApp Cloud API access token",
+    )
+    whatsapp_phone_number_id: str | None = Field(
+        default=None,
+        description="WhatsApp phone number ID",
+    )
+    whatsapp_verify_token: SecretStr | None = Field(
+        default=None,
+        description="WhatsApp webhook verification token",
+    )
+
+    # =========================================================================
     # Validators
     # =========================================================================
 
@@ -218,6 +316,34 @@ class Settings(BaseSettings):
     def validate_region_code(cls, v: str) -> str:
         """Validate region code is uppercase."""
         return v.upper()
+
+    @field_validator(
+        "default_script_provider",
+        "default_voice_provider",
+        "default_video_provider",
+        mode="before",
+    )
+    @classmethod
+    def normalize_provider_name(cls, v: str) -> str:
+        """Normalize provider names for registry lookups."""
+        return str(v).strip().lower()
+
+    @field_validator(
+        "enabled_sources",
+        "enabled_destinations",
+        "script_provider_fallbacks",
+        "voice_provider_fallbacks",
+        "video_provider_fallbacks",
+        mode="before",
+    )
+    @classmethod
+    def parse_csv_list(cls, v: str | list[str] | None) -> list[str]:
+        """Allow list-based settings to be provided as CSV strings."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [item.strip().lower() for item in v.split(",") if item.strip()]
+        return [str(item).strip().lower() for item in v if str(item).strip()]
 
     @model_validator(mode="after")
     def validate_video_dimensions(self) -> "Settings":

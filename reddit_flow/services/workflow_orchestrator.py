@@ -5,11 +5,13 @@ This module provides the WorkflowOrchestrator class that coordinates all service
 to transform Reddit content into YouTube videos.
 """
 
+import inspect
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
+from reddit_flow.clients import MediumClient
 from reddit_flow.config import get_logger
 from reddit_flow.exceptions import (
     AIGenerationError,
@@ -22,7 +24,33 @@ from reddit_flow.exceptions import (
     VideoGenerationError,
     YouTubeUploadError,
 )
-from reddit_flow.models import LinkInfo, RedditPost, VideoScript
+from reddit_flow.models import (
+    LinkInfo,
+    PipelineEvent,
+    PipelineRequest,
+    PipelineResult,
+    PublishRequest,
+    RedditPost,
+    VideoScript,
+)
+
+# from reddit_flow.pipeline.providers import (
+#     AnthropicScriptProvider,
+#     ElevenLabsVoiceProvider,
+#     GeminiScriptProvider,
+#     GoogleCloudTTSProvider,
+#     HeyGenVideoProvider,
+#     OpenAIScriptProvider,
+#     OpenAITTSProvider,
+#     TavusVideoProvider,
+# )
+from reddit_flow.pipeline.publishers import YouTubePublisher
+from reddit_flow.pipeline.registry import ProviderRegistry, SourceAdapterRegistry
+from reddit_flow.pipeline.sources import (
+    MediumArticleSourceAdapter,
+    MediumFeedSourceAdapter,
+    RedditSourceAdapter,
+)
 from reddit_flow.services.content_service import ContentService
 from reddit_flow.services.media_service import MediaGenerationResult, MediaService
 from reddit_flow.services.script_service import ScriptService
@@ -155,6 +183,8 @@ class WorkflowOrchestrator:
         script_service: Optional[ScriptService] = None,
         media_service: Optional[MediaService] = None,
         upload_service: Optional[UploadService] = None,
+        source_registry: Optional[SourceAdapterRegistry] = None,
+        publisher_registry: Optional[ProviderRegistry[YouTubePublisher]] = None,
     ) -> None:
         """
         Initialize WorkflowOrchestrator.
@@ -164,11 +194,15 @@ class WorkflowOrchestrator:
             script_service: Optional ScriptService instance.
             media_service: Optional MediaService instance.
             upload_service: Optional UploadService instance.
+            source_registry: Optional SourceAdapterRegistry instance.
+            publisher_registry: Optional ProviderRegistry[YouTubePublisher] instance.
         """
         self._content_service = content_service
         self._script_service = script_service
         self._media_service = media_service
         self._upload_service = upload_service
+        self._source_registry = source_registry
+        self._publisher_registry = publisher_registry
         self._workflow_counter = 0
         logger.info("WorkflowOrchestrator initialized")
 
@@ -200,6 +234,31 @@ class WorkflowOrchestrator:
             self._upload_service = UploadService()
         return self._upload_service
 
+    @property
+    def source_registry(self) -> SourceAdapterRegistry:
+        """Lazy-load the canonical source registry."""
+        if self._source_registry is None:
+            medium_client = MediumClient()
+            self._source_registry = SourceAdapterRegistry(
+                adapters=[
+                    RedditSourceAdapter(self.content_service),
+                    MediumFeedSourceAdapter(medium_client),
+                    MediumArticleSourceAdapter(medium_client),
+                ]
+            )
+        return self._source_registry
+
+    @property
+    def publisher_registry(self) -> ProviderRegistry[YouTubePublisher]:
+        """Lazy-load the publish destination registry."""
+        if self._publisher_registry is None:
+            registry: ProviderRegistry[YouTubePublisher] = ProviderRegistry(
+                provider_kind="publisher"
+            )
+            registry.register("youtube", YouTubePublisher(self.upload_service))
+            self._publisher_registry = registry
+        return self._publisher_registry
+
     def _generate_workflow_id(self) -> str:
         """Generate a unique workflow ID."""
         self._workflow_counter += 1
@@ -223,6 +282,170 @@ class WorkflowOrchestrator:
         if status in (WorkflowStatus.COMPLETED, WorkflowStatus.FAILED):
             result.completed_at = datetime.now()
         return result
+
+    async def _emit_pipeline_event(
+        self,
+        result: PipelineResult,
+        event_type: str,
+        step: str,
+        message: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        event_callback: Optional[Callable[[PipelineEvent], Any]] = None,
+    ) -> None:
+        """Append a channel-neutral event and optionally deliver it to a callback."""
+        event = PipelineEvent(
+            event_type=event_type,
+            step=step,
+            message=message,
+            metadata=metadata or {},
+        )
+        result.events.append(event)
+
+        if event_callback:
+            callback_result = event_callback(event)
+            if inspect.isawaitable(callback_result):
+                await callback_result
+
+    async def process_request(
+        self,
+        request: PipelineRequest,
+        event_callback: Optional[Callable[[PipelineEvent], Any]] = None,
+        timeout: Optional[int] = None,
+    ) -> PipelineResult:
+        """
+        Execute the generic source-agnostic pipeline for supported sources.
+
+        This initial implementation routes Reddit requests through canonical
+        adapters and publisher registries while preserving the legacy services.
+        """
+        workflow_id = self._generate_workflow_id()
+        result = PipelineResult(workflow_id=workflow_id, status=WorkflowStatus.IN_PROGRESS)
+
+        logger.info(
+            "Starting generic pipeline %s for source URL: %s",
+            workflow_id,
+            request.source_url[:100],
+        )
+
+        try:
+            await self._emit_pipeline_event(
+                result,
+                event_type="status",
+                step="resolve_source",
+                message="Resolving source adapter...",
+                metadata={"source_url": request.source_url},
+                event_callback=event_callback,
+            )
+            source_adapter = self.source_registry.resolve(request)
+
+            await self._emit_pipeline_event(
+                result,
+                event_type="status",
+                step="fetch_content",
+                message=f"Fetching content from {source_adapter.source_name}...",
+                metadata={"source_name": source_adapter.source_name},
+                event_callback=event_callback,
+            )
+            content_item = source_adapter.fetch_content(request)
+            result.content_item = content_item
+
+            legacy_post = content_item.metadata.get("legacy_post")
+
+            await self._emit_pipeline_event(
+                result,
+                event_type="status",
+                step="generate_script",
+                message="Generating script...",
+                metadata={"provider": "legacy_script_service"},
+                event_callback=event_callback,
+            )
+            if isinstance(legacy_post, RedditPost):
+                script = await self.script_service.generate_script(
+                    post=legacy_post,
+                    user_opinion=request.user_input,
+                )
+            else:
+                script = await self.script_service.generate_script_from_content_item(
+                    content_item=content_item,
+                    user_opinion=request.user_input,
+                )
+            result.script = script
+
+            await self._emit_pipeline_event(
+                result,
+                event_type="status",
+                step="generate_media",
+                message="Generating media...",
+                metadata={"provider": "legacy_media_service"},
+                event_callback=event_callback,
+            )
+            media_result = await self.media_service.generate_video_from_script(
+                script=script,
+                avatar_id=request.metadata.get("avatar_id"),
+                test_mode=request.metadata.get("test_mode", False),
+                wait_for_completion=True,
+                timeout=timeout,
+            )
+            result.media_result = media_result
+
+            for destination in request.destinations:
+                await self._emit_pipeline_event(
+                    result,
+                    event_type="status",
+                    step=f"publish_{destination.name}",
+                    message=f"Publishing to {destination.name}...",
+                    metadata={"destination": destination.name},
+                    event_callback=event_callback,
+                )
+
+                publisher = self.publisher_registry.get(destination.name)
+                publish_result = publisher.publish(
+                    PublishRequest(
+                        destination=destination.name,
+                        media_url=media_result.video_url,
+                        script=script,
+                        content_item=content_item,
+                        additional_description=f"\n\nSource: {content_item.source_url}",
+                        keep_local_file=bool(request.metadata.get("keep_local_file", False)),
+                        metadata=destination.metadata,
+                    )
+                )
+                result.publish_results.append(publish_result)
+
+            result.status = WorkflowStatus.COMPLETED
+            result.completed_at = datetime.now()
+
+            await self._emit_pipeline_event(
+                result,
+                event_type="completed",
+                step="completed",
+                message="Pipeline completed successfully",
+                metadata={"publish_url": result.primary_publish_url},
+                event_callback=event_callback,
+            )
+
+            logger.info(
+                "Generic pipeline %s completed successfully. Primary URL: %s",
+                workflow_id,
+                result.primary_publish_url,
+            )
+            return result
+
+        except Exception as exc:
+            result.status = WorkflowStatus.FAILED
+            result.error = str(exc)
+            result.completed_at = datetime.now()
+
+            await self._emit_pipeline_event(
+                result,
+                event_type="error",
+                step="failed",
+                message=f"Pipeline failed: {exc}",
+                metadata={"error_type": exc.__class__.__name__},
+                event_callback=event_callback,
+            )
+            logger.error("Generic pipeline %s failed: %s", workflow_id, exc, exc_info=True)
+            raise
 
     async def process_reddit_url(
         self,

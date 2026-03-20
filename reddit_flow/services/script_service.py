@@ -10,7 +10,11 @@ from typing import Any, Dict, List, Optional
 from reddit_flow.clients import GeminiClient
 from reddit_flow.config import Settings, get_logger
 from reddit_flow.exceptions import AIGenerationError, ContentError
-from reddit_flow.models import RedditComment, RedditPost, VideoScript
+from reddit_flow.models import ContentItem, RedditComment, RedditPost, ScriptBrief, VideoScript
+from reddit_flow.models.pipeline import PipelineRequest
+from reddit_flow.pipeline.contracts import ScriptProvider
+from reddit_flow.pipeline.providers import GeminiScriptProvider
+from reddit_flow.pipeline.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
@@ -43,6 +47,7 @@ class ScriptService:
         max_words: int = 250,
         max_comments: int = 10,
         settings: Optional[Settings] = None,
+        script_provider_registry: Optional[ProviderRegistry[ScriptProvider]] = None,
     ) -> None:
         """
         Initialize ScriptService.
@@ -53,11 +58,13 @@ class ScriptService:
             max_words: Maximum word count for generated scripts.
             max_comments: Maximum number of comments to include in context.
             settings: Optional Settings instance.
+            script_provider_registry: Optional registry for provider fallback resolution.
         """
         self._gemini_client = gemini_client
         self._max_words = max_words
         self._max_comments = max_comments
         self.settings = settings or Settings()
+        self._script_provider_registry = script_provider_registry
         logger.info(
             f"ScriptService initialized (max_words={max_words}, max_comments={max_comments})"
         )
@@ -68,6 +75,67 @@ class ScriptService:
         if self._gemini_client is None:
             self._gemini_client = GeminiClient()
         return self._gemini_client
+
+    def build_script_brief(
+        self,
+        content_item: ContentItem,
+        target: str = "youtube_video",
+    ) -> ScriptBrief:
+        """Build a target-specific brief for script generation."""
+        normalized_target = target.strip().lower()
+
+        if normalized_target == "instagram_reel":
+            return ScriptBrief(
+                target=normalized_target,
+                max_words=min(self._max_words, 180),
+                hook_required=True,
+                cta_required=True,
+                aspect_ratio="9:16",
+                caption_style="short",
+                audience_notes=content_item.summary or content_item.title,
+            )
+
+        if normalized_target == "messaging_summary":
+            return ScriptBrief(
+                target=normalized_target,
+                max_words=min(self._max_words, 120),
+                hook_required=True,
+                cta_required=False,
+                aspect_ratio="text",
+                caption_style="summary",
+                audience_notes=content_item.summary or content_item.title,
+            )
+
+        return ScriptBrief(
+            target=normalized_target,
+            max_words=min(self._max_words, 250),
+            hook_required=True,
+            cta_required=True,
+            aspect_ratio="16:9",
+            caption_style="standard",
+            audience_notes=content_item.summary or content_item.title,
+        )
+
+    def _resolve_script_provider(self) -> ScriptProvider:
+        """Resolve the configured script provider, falling back to Gemini."""
+        if self._script_provider_registry is None:
+            return GeminiScriptProvider(self.gemini_client)
+
+        preferred = self.settings.default_script_provider
+        fallbacks = (
+            self.settings.script_provider_fallbacks
+            if self.settings.enable_provider_fallbacks
+            else []
+        )
+        try:
+            return self._script_provider_registry.resolve(preferred=preferred, fallbacks=fallbacks)
+        except LookupError:
+            if preferred != "gemini":
+                try:
+                    return self._script_provider_registry.resolve(preferred="gemini")
+                except LookupError:
+                    pass
+            return GeminiScriptProvider(self.gemini_client)
 
     async def generate_script(
         self,
@@ -136,6 +204,73 @@ class ScriptService:
             raise
         except Exception as e:
             logger.error(f"Failed to generate script: {e}", exc_info=True)
+            raise AIGenerationError(f"Script generation failed: {e}")
+
+    async def generate_script_from_content_item(
+        self,
+        content_item: ContentItem,
+        user_opinion: Optional[str] = None,
+        target: str = "youtube_video",
+    ) -> VideoScript:
+        """
+        Generate a video script from a canonical content item.
+
+        This enables the generic pipeline to handle non-Reddit sources such as
+        Medium while reusing the existing Gemini-based script generation path.
+        """
+        if self.settings.env != "prod":
+            logger.info(f"Skipping AI script generation in {self.settings.env} mode")
+            return VideoScript(
+                title=f"TEST: {content_item.title}",
+                script="This is a test script generated in test mode. " * 5,
+                source_post_id=content_item.source_id,
+                source_subreddit=content_item.source_type,
+                user_opinion=user_opinion,
+            )
+
+        try:
+            post_text = content_item.text_content
+            if not post_text.strip():
+                raise ContentError("Content item has no content to generate script from")
+
+            comments_data = self._format_generic_comments(content_item.comments)
+            script_brief = self.build_script_brief(content_item, target=target)
+            provider = self._resolve_script_provider()
+            request = PipelineRequest(
+                source_url=content_item.source_url,
+                source_type=content_item.source_type,
+                user_input=user_opinion,
+                metadata={
+                    "target": script_brief.target,
+                    "script_brief": script_brief.model_dump(),
+                },
+            )
+
+            logger.info(
+                "Generating script for canonical content '%s' (%s)",
+                content_item.source_id,
+                content_item.source_type,
+            )
+
+            if hasattr(provider, "generate_script"):
+                script = await provider.generate_script(content_item, request)
+                if isinstance(script, VideoScript):
+                    return script
+
+            return await self.gemini_client.generate_script(
+                post_text=post_text,
+                comments_data=comments_data,
+                user_opinion=user_opinion,
+                source_post_id=content_item.source_id,
+                source_subreddit=content_item.source_type,
+            )
+
+        except AIGenerationError:
+            raise
+        except ContentError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to generate script from content item: {e}", exc_info=True)
             raise AIGenerationError(f"Script generation failed: {e}")
 
     async def generate_script_from_dict(
@@ -263,6 +398,36 @@ class ScriptService:
                     "body": comment.body,
                     "author": comment.author,
                     "score": comment.score,
+                }
+            )
+
+        return formatted
+
+    def _format_generic_comments(
+        self,
+        comments: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Format canonical comments for AI script generation.
+
+        Args:
+            comments: Canonical comments where each item is a dictionary.
+
+        Returns:
+            List of simplified comment dictionaries for the AI provider.
+        """
+        formatted = []
+
+        for comment in comments[: self._max_comments]:
+            body = str(comment.get("body", "")).strip()
+            if not body or body == "[deleted]":
+                continue
+
+            formatted.append(
+                {
+                    "body": body,
+                    "author": str(comment.get("author", "[deleted]")),
+                    "score": int(comment.get("score", 0) or 0),
                 }
             )
 

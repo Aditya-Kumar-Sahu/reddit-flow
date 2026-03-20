@@ -5,13 +5,17 @@ This module provides business logic for generating audio via TTS and creating
 AI avatar videos from scripts using ElevenLabs and HeyGen APIs.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
 from reddit_flow.clients import ElevenLabsClient, HeyGenClient
 from reddit_flow.config import Settings, get_logger
 from reddit_flow.exceptions import MediaGenerationError, TTSError, VideoGenerationError
-from reddit_flow.models import AudioAsset, VideoScript
+from reddit_flow.models import AudioAsset, RenderProfile, VideoScript
+from reddit_flow.models.pipeline import PipelineRequest
+from reddit_flow.pipeline.contracts import VideoProvider, VoiceProvider
+from reddit_flow.pipeline.providers import ElevenLabsVoiceProvider, HeyGenVideoProvider
+from reddit_flow.pipeline.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
@@ -32,6 +36,7 @@ class MediaGenerationResult:
     audio_asset: AudioAsset
     video_id: str
     video_url: Optional[str] = None
+    provider_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class MediaService:
@@ -60,6 +65,8 @@ class MediaService:
         elevenlabs_client: Optional[ElevenLabsClient] = None,
         heygen_client: Optional[HeyGenClient] = None,
         settings: Optional[Settings] = None,
+        voice_provider_registry: Optional[ProviderRegistry[VoiceProvider]] = None,
+        video_provider_registry: Optional[ProviderRegistry[VideoProvider]] = None,
     ) -> None:
         """
         Initialize MediaService.
@@ -68,10 +75,14 @@ class MediaService:
             elevenlabs_client: Optional ElevenLabsClient instance.
             heygen_client: Optional HeyGenClient instance.
             settings: Optional Settings instance.
+            voice_provider_registry: Optional registry for voice providers.
+            video_provider_registry: Optional registry for video providers.
         """
         self._elevenlabs_client = elevenlabs_client
         self._heygen_client = heygen_client
         self.settings = settings or Settings()
+        self._voice_provider_registry = voice_provider_registry
+        self._video_provider_registry = video_provider_registry
         logger.info("MediaService initialized")
 
     @property
@@ -87,6 +98,81 @@ class MediaService:
         if self._heygen_client is None:
             self._heygen_client = HeyGenClient()
         return self._heygen_client
+
+    def _resolve_voice_provider(self) -> VoiceProvider:
+        """Resolve the configured voice provider, falling back to ElevenLabs."""
+        if self._voice_provider_registry is None:
+            return ElevenLabsVoiceProvider(self.elevenlabs_client)
+
+        preferred = self.settings.default_voice_provider
+        fallbacks = (
+            self.settings.voice_provider_fallbacks
+            if self.settings.enable_provider_fallbacks
+            else []
+        )
+        try:
+            return self._voice_provider_registry.resolve(preferred=preferred, fallbacks=fallbacks)
+        except LookupError:
+            if preferred != "elevenlabs":
+                try:
+                    return self._voice_provider_registry.resolve(preferred="elevenlabs")
+                except LookupError:
+                    pass
+            return ElevenLabsVoiceProvider(self.elevenlabs_client)
+
+    def _resolve_video_provider(self) -> VideoProvider:
+        """Resolve the configured video provider, falling back to HeyGen."""
+        if self._video_provider_registry is None:
+            return HeyGenVideoProvider(self.heygen_client)
+
+        preferred = self.settings.default_video_provider
+        fallbacks = (
+            self.settings.video_provider_fallbacks
+            if self.settings.enable_provider_fallbacks
+            else []
+        )
+        try:
+            return self._video_provider_registry.resolve(preferred=preferred, fallbacks=fallbacks)
+        except LookupError:
+            if preferred != "heygen":
+                try:
+                    return self._video_provider_registry.resolve(preferred="heygen")
+                except LookupError:
+                    pass
+            return HeyGenVideoProvider(self.heygen_client)
+
+    def build_render_profile(self, target: str = "youtube_video") -> RenderProfile:
+        """Build a normalized render profile for the selected destination."""
+        normalized_target = target.strip().lower()
+
+        if normalized_target == "instagram_reel":
+            return RenderProfile(
+                name=normalized_target,
+                width=1080,
+                height=1920,
+                enable_captions=True,
+                caption_style="short",
+                background_format="portrait",
+            )
+
+        if normalized_target == "messaging_summary":
+            return RenderProfile(
+                name=normalized_target,
+                width=1080,
+                height=1080,
+                enable_captions=False,
+                caption_style="summary",
+                background_format="square",
+            )
+
+        return RenderProfile(
+            name=normalized_target,
+            width=1920,
+            height=1080,
+            enable_captions=True,
+            caption_style="standard",
+            background_format="landscape",
+        )
 
     def generate_audio(self, text: str) -> bytes:
         """
@@ -109,7 +195,13 @@ class MediaService:
             raise TTSError("Cannot generate audio from empty text")
 
         logger.info(f"Generating audio for {len(text)} characters")
-        return self.elevenlabs_client.text_to_speech(text)
+        provider = self._resolve_voice_provider()
+        request = PipelineRequest(
+            source_url="https://example.com/audio-generation",
+            source_type="voice_request",
+            metadata={"target": "voice"},
+        )
+        return provider.generate_audio(text, request)
 
     def generate_audio_from_script(self, script: VideoScript) -> bytes:
         """
@@ -154,6 +246,7 @@ class MediaService:
         title: Optional[str] = None,
         avatar_id: Optional[str] = None,
         test_mode: bool = False,
+        render_profile: Optional[RenderProfile] = None,
     ) -> str:
         """
         Start avatar video generation.
@@ -171,12 +264,13 @@ class MediaService:
             VideoGenerationError: If video generation fails.
         """
         logger.info(f"Starting video generation: '{title or 'Untitled'}'")
-
-        return self.heygen_client.generate_video(
-            audio_url=audio_asset.url,
+        provider = self._resolve_video_provider()
+        return provider.start_video_generation(
+            audio_asset=audio_asset,
             title=title,
             avatar_id=avatar_id,
             test_mode=test_mode,
+            render_profile=render_profile,
         )
 
     async def wait_for_video(
@@ -200,7 +294,8 @@ class MediaService:
             VideoGenerationError: If generation fails or times out.
         """
         logger.info(f"Waiting for video completion: {video_id}")
-        return await self.heygen_client.wait_for_video(
+        provider = self._resolve_video_provider()
+        return await provider.wait_for_video(
             video_id=video_id,
             update_callback=update_callback,
             timeout=timeout,
@@ -214,6 +309,7 @@ class MediaService:
         wait_for_completion: bool = True,
         update_callback: Optional[Callable[[str], Any]] = None,
         timeout: Optional[int] = None,
+        target: str = "youtube_video",
     ) -> MediaGenerationResult:
         """
         Complete workflow: generate audio and video from a script.
@@ -231,6 +327,7 @@ class MediaService:
             wait_for_completion: Whether to wait for video to complete.
             update_callback: Optional callback for progress updates.
             timeout: Override default wait timeout.
+            target: Normalized render target, e.g. youtube_video or instagram_reel.
 
         Returns:
             MediaGenerationResult with all generated assets.
@@ -269,17 +366,29 @@ class MediaService:
             if update_callback:
                 await update_callback("Starting video generation...")
 
+            render_profile = self.build_render_profile(target)
             video_id = self.start_video_generation(
                 audio_asset=audio_asset,
                 title=script.title,
                 avatar_id=avatar_id,
                 test_mode=test_mode,
+                render_profile=render_profile,
             )
 
             result = MediaGenerationResult(
                 audio_data=audio_data,
                 audio_asset=audio_asset,
                 video_id=video_id,
+                provider_metadata={
+                    "target": target,
+                    "render_profile": render_profile.model_dump(),
+                    "voice_provider": self._resolve_voice_provider().provider_name,
+                    "video_provider": self._resolve_video_provider().provider_name,
+                    "voice_cost_usd": None,
+                    "video_cost_usd": None,
+                    "voice_latency_ms": None,
+                    "video_latency_ms": None,
+                },
             )
 
             # Step 4: Optionally wait for completion
@@ -313,6 +422,7 @@ class MediaService:
         wait_for_completion: bool = True,
         update_callback: Optional[Callable[[str], Any]] = None,
         timeout: Optional[int] = None,
+        target: str = "youtube_video",
     ) -> MediaGenerationResult:
         """
         Generate video from plain text.
@@ -328,6 +438,7 @@ class MediaService:
             wait_for_completion: Whether to wait for video to complete.
             update_callback: Optional callback for progress updates.
             timeout: Override default wait timeout.
+            target: Normalized render target, e.g. instagram_reel.
 
         Returns:
             MediaGenerationResult with all generated assets.
@@ -348,6 +459,7 @@ class MediaService:
             wait_for_completion=wait_for_completion,
             update_callback=update_callback,
             timeout=timeout,
+            target=target,
         )
 
     def check_video_status(self, video_id: str) -> Dict[str, Any]:

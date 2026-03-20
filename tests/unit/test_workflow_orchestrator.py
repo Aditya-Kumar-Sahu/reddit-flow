@@ -27,7 +27,18 @@ from reddit_flow.exceptions import (
     VideoGenerationError,
     YouTubeUploadError,
 )
-from reddit_flow.models import AudioAsset, LinkInfo, RedditComment, RedditPost, VideoScript
+from reddit_flow.models import (
+    AudioAsset,
+    ChannelSpec,
+    ContentItem,
+    DestinationSpec,
+    LinkInfo,
+    PipelineRequest,
+    RedditComment,
+    RedditPost,
+    VideoScript,
+)
+from reddit_flow.pipeline.registry import SourceAdapterRegistry
 from reddit_flow.services.media_service import MediaGenerationResult
 from reddit_flow.services.upload_service import UploadResult
 from reddit_flow.services.workflow_orchestrator import (
@@ -258,9 +269,110 @@ class TestWorkflowResult:
         result = WorkflowResult(workflow_id="wf_001")
         assert result.duration_seconds is None
 
+
+class TestGenericPipelineWorkflow:
+    """Tests for the source-agnostic pipeline interface."""
+
+    @pytest.mark.asyncio
+    async def test_process_request_runs_reddit_pipeline_and_emits_events(
+        self,
+        orchestrator,
+        mock_script_service,
+        mock_media_service,
+        mock_upload_service,
+        sample_url,
+    ):
+        """Generic pipeline requests should still drive the legacy Reddit flow."""
+        captured_events = []
+
+        async def capture_event(event):
+            captured_events.append(event)
+
+        request = PipelineRequest(
+            source_url=sample_url,
+            user_input="Focus on the top comments",
+            channel=ChannelSpec(name="telegram", conversation_id="chat-1", user_id="user-1"),
+            destinations=[DestinationSpec(name="youtube")],
+        )
+
+        result = await orchestrator.process_request(request, event_callback=capture_event)
+
+        assert result.status == WorkflowStatus.COMPLETED
+        assert result.content_item is not None
+        assert result.content_item.source_type == "reddit"
+        assert result.script is not None
+        assert result.media_result is not None
+        assert len(result.publish_results) == 1
+        assert result.publish_results[0].destination == "youtube"
+        assert [event.step for event in captured_events] == [
+            "resolve_source",
+            "fetch_content",
+            "generate_script",
+            "generate_media",
+            "publish_youtube",
+            "completed",
+        ]
+
+        mock_script_service.generate_script.assert_awaited_once()
+        mock_media_service.generate_video_from_script.assert_awaited_once()
+        mock_upload_service.upload_from_url_with_script.assert_called_once()
+
         result.completed_at = datetime.now()
         assert result.duration_seconds is not None
         assert result.duration_seconds >= 0
+
+    @pytest.mark.asyncio
+    async def test_process_request_supports_non_reddit_content_with_generic_script_generation(
+        self,
+        mock_script_service,
+        mock_media_service,
+        mock_upload_service,
+    ):
+        """Canonical content without a legacy Reddit model should use the generic script path."""
+
+        class DummyMediumSourceAdapter:
+            source_name = "medium_article"
+
+            def supports(self, request):
+                return request.source_url.startswith("https://medium.com/")
+
+            def fetch_content(self, request):
+                return ContentItem(
+                    source_type="medium_article",
+                    source_id="story-123",
+                    source_url=request.source_url,
+                    title="A Medium Story",
+                    body="A short article body.",
+                )
+
+        mock_script_service.generate_script = AsyncMock()
+        mock_script_service.generate_script_from_content_item = AsyncMock(
+            return_value=VideoScript(
+                script="A platform-neutral script.",
+                title="A Medium Story",
+                source_post_id="story-123",
+                source_subreddit="medium_article",
+            )
+        )
+
+        orchestrator = WorkflowOrchestrator(
+            content_service=MagicMock(),
+            script_service=mock_script_service,
+            media_service=mock_media_service,
+            upload_service=mock_upload_service,
+            source_registry=SourceAdapterRegistry(adapters=[DummyMediumSourceAdapter()]),
+        )
+
+        result = await orchestrator.process_request(
+            PipelineRequest(
+                source_url="https://medium.com/@writer/a-medium-story-123456",
+                destinations=[DestinationSpec(name="youtube")],
+            )
+        )
+
+        assert result.status == WorkflowStatus.COMPLETED
+        mock_script_service.generate_script.assert_not_called()
+        mock_script_service.generate_script_from_content_item.assert_awaited_once()
 
 
 # =============================================================================

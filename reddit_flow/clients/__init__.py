@@ -15,6 +15,7 @@ from reddit_flow.clients.base import AsyncClientMixin, BaseClient, HTTPClientMix
 from reddit_flow.clients.elevenlabs_client import ElevenLabsClient
 from reddit_flow.clients.gemini_client import GeminiClient
 from reddit_flow.clients.heygen_client import HeyGenClient
+from reddit_flow.clients.medium_client import MediumClient
 from reddit_flow.clients.reddit_client import RedditClient
 from reddit_flow.clients.youtube_client import YouTubeClient
 
@@ -26,5 +27,6 @@ __all__ = [
     "GeminiClient",
     "ElevenLabsClient",
     "HeyGenClient",
+    "MediumClient",
     "YouTubeClient",
 ]
