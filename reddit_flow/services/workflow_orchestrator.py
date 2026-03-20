@@ -271,6 +271,97 @@ class WorkflowOrchestrator:
             result.completed_at = datetime.now()
         return result
 
+    def _select_pipeline_target(self, request: PipelineRequest) -> str:
+        """Select the canonical script/render target from destinations and channel context."""
+        destination_names = [destination.name for destination in request.destinations]
+        if "instagram" in destination_names:
+            return "instagram_reel"
+        if request.channel and request.channel.name == "whatsapp" and not destination_names:
+            return "messaging_summary"
+        return "youtube_video"
+
+    def _build_provider_path(
+        self,
+        request: PipelineRequest,
+        result: PipelineResult,
+    ) -> Dict[str, Any]:
+        """Build a provider-path snapshot for structured logging."""
+        script_provider = None
+        if hasattr(self.script_service, "resolve_script_provider_name"):
+            try:
+                script_provider = self.script_service.resolve_script_provider_name()
+            except Exception:
+                script_provider = None
+        if script_provider is None:
+            script_provider = str(
+                getattr(
+                    getattr(self.script_service, "settings", None),
+                    "default_script_provider",
+                    request.provider_selection.script_provider,
+                )
+            )
+
+        media_metadata = (
+            getattr(result.media_result, "provider_metadata", {}) if result.media_result else {}
+        )
+        voice_provider = media_metadata.get(
+            "voice_provider",
+            str(
+                getattr(
+                    getattr(self.media_service, "settings", None),
+                    "default_voice_provider",
+                    request.provider_selection.voice_provider,
+                )
+            ),
+        )
+        video_provider = media_metadata.get(
+            "video_provider",
+            str(
+                getattr(
+                    getattr(self.media_service, "settings", None),
+                    "default_video_provider",
+                    request.provider_selection.video_provider,
+                )
+            ),
+        )
+
+        return {
+            "script": script_provider,
+            "voice": voice_provider,
+            "video": video_provider,
+            "publishers": [publish_result.destination for publish_result in result.publish_results],
+        }
+
+    def _log_pipeline_state(
+        self,
+        message: str,
+        request: PipelineRequest,
+        result: PipelineResult,
+        level: int = 20,
+    ) -> None:
+        """Emit a structured log record for the current pipeline state."""
+        content_item = result.content_item
+        logger.log(
+            level,
+            message,
+            extra={
+                "extra_data": {
+                    "workflow_id": result.workflow_id,
+                    "source_type": (
+                        content_item.source_type
+                        if content_item is not None
+                        else (request.source_type or "unknown")
+                    ),
+                    "target_destinations": [
+                        destination.name for destination in request.destinations
+                    ],
+                    "channel": request.channel.name if request.channel else None,
+                    "provider_path": self._build_provider_path(request, result),
+                    "partial_content": bool(content_item.partial) if content_item else False,
+                }
+            },
+        )
+
     async def _emit_pipeline_event(
         self,
         result: PipelineResult,
@@ -308,11 +399,12 @@ class WorkflowOrchestrator:
         """
         workflow_id = self._generate_workflow_id()
         result = PipelineResult(workflow_id=workflow_id, status=WorkflowStatus.IN_PROGRESS)
+        pipeline_target = self._select_pipeline_target(request)
 
-        logger.info(
-            "Starting generic pipeline %s for source URL: %s",
-            workflow_id,
-            request.source_url[:100],
+        self._log_pipeline_state(
+            message=f"Starting generic pipeline for {request.source_url[:100]}",
+            request=request,
+            result=result,
         )
 
         try:
@@ -336,6 +428,11 @@ class WorkflowOrchestrator:
             )
             content_item = source_adapter.fetch_content(request)
             result.content_item = content_item
+            self._log_pipeline_state(
+                message="Resolved canonical content",
+                request=request,
+                result=result,
+            )
 
             legacy_post = content_item.metadata.get("legacy_post")
 
@@ -348,14 +445,22 @@ class WorkflowOrchestrator:
                 event_callback=event_callback,
             )
             if isinstance(legacy_post, RedditPost):
-                script = await self.script_service.generate_script(
-                    post=legacy_post,
-                    user_opinion=request.user_input,
-                )
+                if pipeline_target == "youtube_video":
+                    script = await self.script_service.generate_script(
+                        post=legacy_post,
+                        user_opinion=request.user_input,
+                    )
+                else:
+                    script = await self.script_service.generate_script_from_content_item(
+                        content_item=content_item,
+                        user_opinion=request.user_input,
+                        target=pipeline_target,
+                    )
             else:
                 script = await self.script_service.generate_script_from_content_item(
                     content_item=content_item,
                     user_opinion=request.user_input,
+                    target=pipeline_target,
                 )
             result.script = script
 
@@ -373,6 +478,7 @@ class WorkflowOrchestrator:
                 test_mode=request.metadata.get("test_mode", False),
                 wait_for_completion=True,
                 timeout=timeout,
+                target=pipeline_target,
             )
             result.media_result = media_result
 
@@ -418,6 +524,11 @@ class WorkflowOrchestrator:
                 workflow_id,
                 result.primary_publish_url,
             )
+            self._log_pipeline_state(
+                message="Generic pipeline completed successfully",
+                request=request,
+                result=result,
+            )
             return result
 
         except Exception as exc:
@@ -434,6 +545,12 @@ class WorkflowOrchestrator:
                 event_callback=event_callback,
             )
             logger.error("Generic pipeline %s failed: %s", workflow_id, exc, exc_info=True)
+            self._log_pipeline_state(
+                message=f"Generic pipeline failed: {exc}",
+                request=request,
+                result=result,
+                level=40,
+            )
             raise
 
     async def process_reddit_url(

@@ -174,6 +174,24 @@ class MediaService:
             background_format="landscape",
         )
 
+    def _build_provider_metadata(
+        self,
+        target: str,
+        render_profile: Optional[RenderProfile] = None,
+    ) -> Dict[str, Any]:
+        """Build normalized provider metadata for logging and downstream routing."""
+        profile = render_profile or self.build_render_profile(target)
+        return {
+            "target": target,
+            "render_profile": profile.model_dump(),
+            "voice_provider": str(getattr(self.settings, "default_voice_provider", "elevenlabs")),
+            "video_provider": str(getattr(self.settings, "default_video_provider", "heygen")),
+            "voice_cost_usd": None,
+            "video_cost_usd": None,
+            "voice_latency_ms": None,
+            "video_latency_ms": None,
+        }
+
     def generate_audio(self, text: str) -> bytes:
         """
         Generate audio from text using ElevenLabs TTS.
@@ -339,6 +357,7 @@ class MediaService:
         """
         if self.settings.env != "prod":
             logger.info(f"Skipping video generation in {self.settings.env} mode")
+            render_profile = self.build_render_profile(target)
             return MediaGenerationResult(
                 audio_data=b"dummy_audio",
                 audio_asset=AudioAsset(
@@ -347,6 +366,7 @@ class MediaService:
                 ),
                 video_id="test_video_id",
                 video_url="https://example.com/test_video.mp4",
+                provider_metadata=self._build_provider_metadata(target, render_profile),
             )
 
         try:
@@ -379,16 +399,13 @@ class MediaService:
                 audio_data=audio_data,
                 audio_asset=audio_asset,
                 video_id=video_id,
-                provider_metadata={
-                    "target": target,
-                    "render_profile": render_profile.model_dump(),
-                    "voice_provider": self._resolve_voice_provider().provider_name,
-                    "video_provider": self._resolve_video_provider().provider_name,
-                    "voice_cost_usd": None,
-                    "video_cost_usd": None,
-                    "voice_latency_ms": None,
-                    "video_latency_ms": None,
-                },
+                provider_metadata=self._build_provider_metadata(target, render_profile),
+            )
+            result.provider_metadata["voice_provider"] = (
+                self._resolve_voice_provider().provider_name
+            )
+            result.provider_metadata["video_provider"] = (
+                self._resolve_video_provider().provider_name
             )
 
             # Step 4: Optionally wait for completion

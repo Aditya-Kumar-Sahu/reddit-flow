@@ -19,7 +19,7 @@ import sys
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-from reddit_flow.bot import WorkflowManager, help_command, start
+from reddit_flow.bot import TelegramChannel, help_command, start
 from reddit_flow.config import Settings, configure_logging, get_logger
 from reddit_flow.exceptions import ConfigurationError
 
@@ -46,7 +46,7 @@ def main() -> int:
 
         # Initialize workflow manager
         logger.info("Initializing services...")
-        workflow = WorkflowManager(settings=settings)
+        workflow = TelegramChannel(settings=settings)
 
         # Verify services
         workflow.verify_services()

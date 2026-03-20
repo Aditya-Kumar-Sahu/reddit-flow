@@ -137,6 +137,49 @@ class ScriptService:
                     pass
             return GeminiScriptProvider(self.gemini_client)
 
+    def resolve_script_provider_name(self) -> str:
+        """Resolve the active script provider name for logging and tracing."""
+        try:
+            return self._resolve_script_provider().provider_name
+        except Exception:
+            return str(getattr(self.settings, "default_script_provider", "gemini"))
+
+    def _build_provider_candidates(self) -> List[ScriptProvider]:
+        """Build the ordered provider chain for runtime fallback."""
+        if self._script_provider_registry is None:
+            return [GeminiScriptProvider(self.gemini_client)]
+
+        candidates: List[ScriptProvider] = []
+        candidate_names: List[str] = []
+
+        preferred = str(getattr(self.settings, "default_script_provider", "gemini")).strip().lower()
+        if preferred:
+            candidate_names.append(preferred)
+
+        if getattr(self.settings, "enable_provider_fallbacks", False):
+            for fallback in getattr(self.settings, "script_provider_fallbacks", []):
+                name = str(fallback).strip().lower()
+                if name and name not in candidate_names:
+                    candidate_names.append(name)
+
+        if "gemini" not in candidate_names:
+            candidate_names.append("gemini")
+
+        for candidate_name in candidate_names:
+            if candidate_name == "gemini" and self._script_provider_registry is None:
+                candidates.append(GeminiScriptProvider(self.gemini_client))
+                continue
+            try:
+                candidates.append(self._script_provider_registry.get(candidate_name))
+            except LookupError:
+                if candidate_name == "gemini":
+                    candidates.append(GeminiScriptProvider(self.gemini_client))
+
+        if not candidates:
+            candidates.append(GeminiScriptProvider(self.gemini_client))
+
+        return candidates
+
     async def generate_script(
         self,
         post: RedditPost,
@@ -235,7 +278,6 @@ class ScriptService:
 
             comments_data = self._format_generic_comments(content_item.comments)
             script_brief = self.build_script_brief(content_item, target=target)
-            provider = self._resolve_script_provider()
             request = PipelineRequest(
                 source_url=content_item.source_url,
                 source_type=content_item.source_type,
@@ -252,8 +294,28 @@ class ScriptService:
                 content_item.source_type,
             )
 
-            if hasattr(provider, "generate_script"):
-                script = await provider.generate_script(content_item, request)
+            for provider in self._build_provider_candidates():
+                if not hasattr(provider, "generate_script"):
+                    continue
+                try:
+                    script = await provider.generate_script(content_item, request)
+                except AIGenerationError as exc:
+                    logger.warning(
+                        "Script provider '%s' failed for content '%s': %s",
+                        provider.provider_name,
+                        content_item.source_id,
+                        exc,
+                    )
+                    continue
+                except Exception as exc:
+                    logger.warning(
+                        "Unexpected script-provider failure from '%s' for '%s': %s",
+                        provider.provider_name,
+                        content_item.source_id,
+                        exc,
+                    )
+                    continue
+
                 if isinstance(script, VideoScript):
                     return script
 

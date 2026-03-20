@@ -8,10 +8,11 @@ This module provides the Telegram bot interface including:
 """
 
 from reddit_flow.bot.handlers import help_command, start
-from reddit_flow.bot.workflow import WorkflowManager
+from reddit_flow.channels.telegram_channel import TelegramChannel, WorkflowManager
 
 __all__ = [
     "start",
     "help_command",
+    "TelegramChannel",
     "WorkflowManager",
 ]

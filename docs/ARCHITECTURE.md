@@ -1,282 +1,132 @@
 # Reddit-Flow Architecture
 
-**Version:** 1.0
-**Last Updated:** January 2026
-
 ## Overview
 
-Reddit-Flow is a Python automation system that transforms Reddit discussions into AI-hosted video content and uploads them to YouTube. The system uses a modular, service-oriented architecture with clear separation of concerns.
+Reddit-Flow now centers on a canonical multi-platform pipeline instead of a Reddit-only workflow.
 
-## High-Level Architecture
+The key design choice is that sources, providers, publishers, and messaging channels all plug into the same orchestrator through small contracts.
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                             Entry Points                                │
-│   ┌────────────────────┐                    ┌────────────────────────┐  │
-│   │   Telegram Bot     │                    │      CLI / main.py     │  │
-│   │   (bot/handlers)   │                    │   (direct invocation)  │  │
-│   └─────────┬──────────┘                    └────────────┬───────────┘  │
-│             │                                            │              │
-│             └──────────────────┬─────────────────────────┘              │
-│                                ▼                                        │
-│                   ┌────────────────────────┐                            │
-│                   │  WorkflowOrchestrator  │                            │
-│                   │  (services/workflow)   │                            │
-│                   └────────────┬───────────┘                            │
-├────────────────────────────────┼────────────────────────────────────────┤
-│                                │                        Service Layer   │
-│     ┌────────────┬─────────────┼──────────────┬─────────────┐           │
-│     │            │             │              │             │           │
-│     ▼            ▼             ▼              ▼             ▼           │
-│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌─────────────┐     │
-│ │ Content  │ │ Script   │ │  Media   │ │ Upload   │ │ Structured  │     │
-│ │ Service  │ │ Service  │ │ Service  │ │ Service  │ │   Logger    │     │
-│ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────────────┘     │
-├──────┼────────────┼────────────┼────────────┼───────────────────────────┤
-│      │            │            │            │            Client Layer   │
-│      │            │            │            └────────────┐              │
-|      │            │            │                         │              │
-│      ▼            ▼            ▼                         ▼              │
-│ ┌─────────┐ ┌─────────┐ ┌────────────┐ ┌─────────┐ ┌───────────┐        │
-│ │ Reddit  │ │ Gemini  │ │ ElevenLabs │ │ HeyGen  │ │  YouTube  │        │
-│ │ Client  │ │ Client  │ │   Client   │ │ Client  │ │  Client   │        │
-│ └────┬────┘ └────┬────┘ └────┬───────┘ └───┬─────┘ └─────┬─────┘        │
-├──────┼───────────┼───────────┼─────────────┼─────────────┼──────────────┤
-│      │           │           │             │             │    External  │
-│      ▼           ▼           ▼             ▼             ▼        APIs  │
-│  [Reddit]    [Gemini]   [ElevenLabs]   [HeyGen]      [YouTube]          │
-│    API        AI API      TTS API      Video API    Data API v3         │
-└─────────────────────────────────────────────────────────────────────────┘
+```text
+Inbound Channel
+    ->
+PipelineRequest
+    ->
+SourceAdapter
+    ->
+ContentItem
+    ->
+ScriptService
+    ->
+MediaService
+    ->
+Publisher(s)
+    ->
+PipelineResult + PipelineEvent(s)
+    ->
+Outbound Channel
 ```
 
-## Package Structure
+## Main Runtime Pieces
 
-```
-reddit_flow/
-├── __init__.py              # Package exports
-├── bot/
-│   ├── handlers.py          # Telegram command handlers
-│   └── workflow.py          # Bot-specific workflow logic
-├── clients/
-│   ├── base.py              # Abstract base client (BaseClient)
-│   ├── reddit_client.py     # Reddit API via PRAW
-│   ├── gemini_client.py     # Google Gemini AI
-│   ├── elevenlabs_client.py # ElevenLabs TTS
-│   ├── heygen_client.py     # HeyGen video generation
-│   └── youtube_client.py    # YouTube Data API v3
-├── config/
-│   ├── settings.py          # Pydantic-based settings
-│   └── logging_config.py    # Centralized logging setup
-├── exceptions/
-│   └── errors.py            # Custom exception hierarchy
-├── models/
-│   ├── reddit.py            # RedditPost, RedditComment, LinkInfo
-│   ├── script.py            # VideoScript, ScriptSection
-│   └── video.py             # VideoRequest, AudioAsset, YouTubeUpload*
-├── services/
-│   ├── content_service.py   # URL parsing, Reddit content fetching
-│   ├── script_service.py    # AI script generation
-│   ├── media_service.py     # TTS and video generation
-│   ├── upload_service.py    # YouTube upload logic
-│   └── workflow_orchestrator.py  # Main workflow coordination
-└── utils/
-    ├── retry.py             # Retry, CircuitBreaker, Timeout
-    ├── structured_logger.py # JSON logging utility
-    └── validators.py        # URL and input validation
-```
+### Entry points
 
-## Component Details
+- `main.py` starts the Telegram bot
+- `TelegramChannel` handles Telegram messages and forwards them into the orchestrator
+- `WhatsAppChannel` handles webhook-delivered text input and returns progress/final messages
 
-### 1. Clients Layer
+### Orchestration
 
-All clients inherit from `BaseClient` which provides:
-- Common initialization pattern
-- Health check (`verify_service()`)
-- Logging integration
-- Abstract method enforcement
+- `WorkflowOrchestrator.process_request(...)` is the generic pipeline entry point
+- `WorkflowOrchestrator.process_reddit_url(...)` remains as the legacy compatibility path
+- The orchestrator emits channel-neutral `PipelineEvent` objects throughout execution
 
-| Client | External API | Key Methods |
-|--------|--------------|-------------|
-| `RedditClient` | Reddit (PRAW) | `get_post_data()`, `get_hot_posts()` |
-| `GeminiClient` | Google Gemini AI | `generate_script()`, `extract_link_info()` |
-| `ElevenLabsClient` | ElevenLabs TTS | `text_to_speech()`, `list_voices()` |
-| `HeyGenClient` | HeyGen v2 API | `generate_video()`, `wait_for_video()` |
-| `YouTubeClient` | YouTube Data API | `upload_video()`, `get_channel_info()` |
+### Canonical models
 
-### 2. Services Layer
+- `PipelineRequest`: normalized input for any supported workflow
+- `ContentItem`: canonical content from Reddit, Medium, or future sources
+- `PipelineResult`: final workflow outcome across destinations
+- `PublishRequest` and `PublishResult`: normalized publish contracts
+- `ChannelSpec` and `DestinationSpec`: channel and publish context
 
-Services orchestrate business logic using one or more clients:
+## Adapters and Registries
 
-| Service | Purpose | Dependencies |
-|---------|---------|--------------|
-| `ContentService` | Parse URLs, fetch Reddit content | `RedditClient` |
-| `ScriptService` | Generate AI video scripts | `GeminiClient`, `ContentService` |
-| `MediaService` | Create audio/video content | `ElevenLabsClient`, `HeyGenClient` |
-| `UploadService` | Upload to YouTube with metadata | `YouTubeClient` |
-| `WorkflowOrchestrator` | Coordinate full workflow | All services |
+### Sources
 
-### 3. Models Layer
+- `RedditSourceAdapter`
+- `MediumArticleSourceAdapter`
+- `MediumFeedSourceAdapter`
 
-Pydantic models ensure type safety and validation:
+These are resolved by `SourceAdapterRegistry`.
 
-```python
-# Reddit models
-RedditPost     # Post with title, content, comments
-RedditComment  # Individual comment with author, votes
-LinkInfo       # Parsed URL components
+### Providers
 
-# Script models
-VideoScript    # Complete script with sections
-ScriptSection  # Individual script segment
+- Script: Gemini, OpenAI adapter, Anthropic adapter
+- Voice: ElevenLabs, OpenAI TTS adapter, Google Cloud TTS adapter
+- Video: HeyGen, Tavus adapter
 
-# Video models
-VideoRequest           # HeyGen video generation request
-AudioAsset             # Uploaded audio metadata
-VideoGenerationResponse # HeyGen response
-YouTubeUploadRequest   # YouTube upload parameters
-YouTubeUploadResponse  # Upload result with video URL
-```
+These are resolved by `ProviderRegistry`.
 
-### 4. Error Handling
+### Publishers
 
-Exception hierarchy:
+- `YouTubePublisher`
+- `InstagramPublisher`
 
-```
-RedditFlowError (base)
-├── ConfigurationError      # Missing/invalid config
-├── ValidationError         # Input validation failed
-├── InvalidURLError         # Malformed Reddit URL
-├── ContentError            # Content processing issues
-├── APIError (base)
-│   ├── RedditAPIError
-│   ├── AIGenerationError
-│   ├── TTSError
-│   ├── VideoGenerationError
-│   └── YouTubeUploadError
-├── RetryableError
-│   └── TransientAPIError   # Temporary failures
-└── MediaGenerationError    # Audio/video creation failed
-```
+Instagram publishing always creates an export bundle and optionally performs a direct publish when enabled.
 
-### 5. Resilience Patterns
+### Channels
 
-The `utils/retry.py` module provides:
+- `TelegramChannel`
+- `WhatsAppChannel`
 
-- **RetryConfig**: Configurable retry behavior with exponential backoff
-- **with_retry()**: Decorator for automatic retries
-- **CircuitBreaker**: Prevents cascading failures
-- **with_timeout()**: Function execution timeouts
+Channels convert inbound user input into `PipelineRequest` objects and translate `PipelineEvent` updates back into human-readable status messages.
 
-## Data Flow
+## Destination-Aware Behavior
 
-### Full Workflow (URL → YouTube)
+The generic pipeline now chooses target-specific script and media behavior from the destination list.
 
-```
-1. Parse URL
-   Input: Reddit URL string
-   Output: LinkInfo(subreddit, post_id)
+- YouTube defaults to `youtube_video`
+- Instagram uses `instagram_reel`
+- Messaging-focused summaries can use `messaging_summary`
 
-2. Fetch Content
-   Input: LinkInfo
-   Output: RedditPost(title, content, comments[])
+This target is passed into both script generation and media rendering so the same source content can be shaped differently per destination.
 
-3. Generate Script
-   Input: RedditPost + optional user_opinion
-   Output: VideoScript(title, body, sections[])
+## Logging
 
-4. Generate Media
-   Input: VideoScript
-   Steps:
-     a. text_to_speech(script.body) → audio_bytes
-     b. upload_audio(audio_bytes) → AudioAsset
-     c. generate_video(audio_url) → video_id
-     d. wait_for_video(video_id) → video_url
-   Output: MediaGenerationResult(video_url, audio_asset)
+Phase 6 adds structured pipeline context to orchestrator logs.
 
-5. Upload Video
-   Input: video_url + VideoScript
-   Steps:
-     a. Download video from HeyGen
-     b. Build YouTube metadata
-     c. Upload via YouTube API
-   Output: UploadResult(youtube_url, video_id)
-```
+Every important pipeline state can now include:
 
-## Configuration
+- `workflow_id`
+- `source_type`
+- `target_destinations`
+- `channel`
+- `provider_path`
+- `partial_content`
 
-Settings are loaded via Pydantic from environment variables:
-
-```bash
-# Required
-TELEGRAM_BOT_TOKEN=...
-REDDIT_CLIENT_ID=...
-REDDIT_CLIENT_SECRET=...
-REDDIT_USER_AGENT=...
-REDDIT_USERNAME=...
-REDDIT_PASSWORD=...
-GOOGLE_API_KEY=...          # Gemini AI
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID=...
-HEYGEN_API_KEY=...
-HEYGEN_AVATAR_ID=...
-YOUTUBE_CLIENT_SECRETS_FILE=youtube-client.json
-
-# Optional
-LOG_LEVEL=INFO
-LOG_DIR=logs
-HEYGEN_VIDEO_WIDTH=1080
-HEYGEN_VIDEO_HEIGHT=1920
-```
+This is designed for JSON log sinks through the existing logging configuration.
 
 ## Testing Strategy
 
-```
-tests/
-├── unit/           # 625 tests - Mocked dependencies
-├── integration/    # 22 tests - Real API calls (skipped if no creds)
-└── e2e/            # 13 tests - Full workflow with mocked APIs
-```
+### Unit tests
 
-**Coverage:** 93%+ across all modules
+- Validate models, contracts, services, adapters, and failure paths
+- Cover provider fallback, media timeouts, publish failures, and channel cleanup behavior
 
-**Markers:**
-- `@pytest.mark.unit` - Fast, isolated tests
-- `@pytest.mark.integration` - Requires API credentials
-- `@pytest.mark.e2e` - Full workflow tests
-- `@pytest.mark.slow` - Tests taking >10s
-- `@pytest.mark.costly` - Consumes API quota
+### End-to-end tests
 
-## Deployment
+- Keep the legacy `Reddit -> YouTube -> Telegram` path green
+- Verify `Medium article -> Instagram -> WhatsApp`
+- Verify `Medium feed -> Instagram export bundle -> WhatsApp`
 
-### Prerequisites
-- Python 3.11+
-- API credentials for all services
-- YouTube OAuth credentials (token.json)
+### Live integration smoke tests
 
-### Running
+- Medium article fetch
+- Medium feed fetch
+- Gemini script generation from live Medium content
+- Credential-gated Instagram and WhatsApp contract smoke checks
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+## Compatibility Notes
 
-# Run tests
-pytest tests/unit/ -v
-
-# Run with Telegram bot
-python main.py
-
-# Script-only mode (no video)
-python -c "from reddit_flow import WorkflowOrchestrator; ..."
-```
-
-## Design Decisions
-
-1. **Async/Await**: Gemini client and workflow orchestrator use async for better concurrency during API waits.
-
-2. **Pydantic v2**: All models use Pydantic for validation, serialization, and IDE support.
-
-3. **No ORM**: Direct API calls with retry logic instead of database persistence.
-
-4. **Circuit Breaker**: Protects against cascading failures when external APIs are down.
-
-5. **Structured Logging**: JSON logs for production, colored console for development.
+- The internal bot entrypoint now uses `TelegramChannel` directly
+- Legacy compatibility wrappers remain only where they reduce migration risk
+- `REFACTOR.md` tracks the remaining cleanup items and any deferred compatibility removal

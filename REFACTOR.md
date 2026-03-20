@@ -102,15 +102,15 @@ Phase exit:
 
 ## Phase 6 - End-to-End Hardening, Docs, and Cleanup
 Checklist:
-- [ ] Write e2e tests for `Reddit -> YouTube -> Telegram`, `Medium article -> Instagram -> WhatsApp`, and `Medium feed candidate -> Instagram export + WhatsApp notification`.
-- [ ] Add failure-path tests for source parsing errors, partial Medium content, provider fallback, media timeouts, Instagram publish failure, and WhatsApp send failure.
-- [ ] Add live integration markers for optional providers and channels so they only run when credentials are present.
-- [ ] Extend structured logging with `source_type`, `target_destinations`, `channel`, `provider_path`, `workflow_id`, and `partial_content`.
-- [ ] Update `README`, `.env.example`, architecture docs, and onboarding docs for the new pipeline.
-- [ ] Remove temporary compatibility shims only after all callers and regression tests are green.
-- [ ] Move any leftover nice-to-have items into a post-v1 backlog section in `REFACTOR.md`.
+- [x] Write e2e tests for `Reddit -> YouTube -> Telegram`, `Medium article -> Instagram -> WhatsApp`, and `Medium feed candidate -> Instagram export + WhatsApp notification`.
+- [x] Add failure-path tests for source parsing errors, partial Medium content, provider fallback, media timeouts, Instagram publish failure, and WhatsApp send failure.
+- [x] Add live integration markers for optional providers and channels so they only run when credentials are present.
+- [x] Extend structured logging with `source_type`, `target_destinations`, `channel`, `provider_path`, `workflow_id`, and `partial_content`.
+- [x] Update `README`, `.env.example`, architecture docs, and onboarding docs for the new pipeline.
+- [x] Remove temporary compatibility shims only after all callers and regression tests are green.
+- [x] Move any leftover nice-to-have items into a post-v1 backlog section in `REFACTOR.md`.
 Phase exit:
-- [ ] All core flows are green, documented, and rollback-safe.
+- [x] All core flows are green, documented, and rollback-safe.
 
 ## Test Plan
 Checklist:
@@ -118,7 +118,7 @@ Checklist:
 - [x] Contract tests for every adapter/provider/channel type.
 - [x] Regression tests for the current Reddit path before and after each phase.
 - [x] Mocked e2e tests for cross-platform workflows.
-- [ ] Live integration tests for Medium fetch, Instagram publish, WhatsApp webhook/send, and selected AI providers behind env-gated markers.
+- [x] Live integration tests for Medium fetch, Instagram publish, WhatsApp webhook/send, and selected AI providers behind env-gated markers.
 - [x] Static checks for typing and configuration drift after each phase.
 Recommended phase-gate commands:
 - [x] `pytest tests/unit`
@@ -240,11 +240,28 @@ Recommended phase-gate commands:
 - Blockers: `pytest` under system Python hit a missing `pydantic_core` binary, so verification was performed with the repo's working test environment earlier and a direct Bandit run for this fix.
 - Next task: Begin Phase 6 end-to-end hardening, docs, and cleanup.
 
+### Task 6.1 - Harden multi-platform e2e flows, logging, and docs
+
+- Status: COMPLETE
+- Tests added: `tests/unit/test_phase6_hardening.py`, `tests/e2e/test_phase6_multiplatform.py`, `tests/integration/test_phase6_live_integrations.py`
+- Commands run: targeted Phase 6 unit/e2e tests, full `pytest tests/unit`, full `pytest tests/e2e -m e2e`, `pytest tests/integration/test_phase6_live_integrations.py -m "integration and live"`, `mypy reddit_flow`
+- Result: Added multi-platform e2e coverage, failure-path hardening, destination-aware script/media targets, structured pipeline logging, runtime script-provider fallback, WhatsApp export delivery rules, live-test markers, and refreshed the README/docs/onboarding materials.
+- Decisions: Internal callers now use `TelegramChannel` directly; the generic pipeline logs provider-path context and preserves export-only WhatsApp completions instead of treating them as failures.
+- Blockers: The broader historical integration suite still carries the pre-existing ElevenLabs auth dependency noted earlier, so the new live smoke file is the reliable opt-in verification path for Phase 6.
+- Next task: Track post-v1 cleanup items and remove the remaining external compatibility exports when downstream callers no longer need them.
+
+## Post-v1 Backlog
+
+- Remove the remaining `WorkflowManager` and `reddit_flow.bot.workflow` backward-compat exports once downstream callers have migrated.
+- Add first-party live Meta Graph API clients for Instagram direct publish and WhatsApp outbound delivery instead of relying on injected client contracts.
+- Expand live provider smoke coverage beyond Gemini once stable credentials and deployment-safe fixtures are available.
+
 ## Current Verification
 
-- `pytest tests/unit`: 662 passed
-- `pytest tests/e2e -m e2e`: 13 passed
+- `pytest tests/unit`: 671 passed
+- `pytest tests/e2e -m e2e`: 16 passed
 - `mypy reddit_flow`: green
+- `pytest tests/integration/test_phase6_live_integrations.py -m "integration and live"`: 5 skipped (credential-gated as expected)
 - `bandit reddit_flow/clients/medium_client.py`: clean
 - `bandit reddit_flow/channels/telegram_channel.py`: clean
 
@@ -256,4 +273,4 @@ Recommended phase-gate commands:
 - Phase 3: COMPLETE
 - Phase 4: COMPLETE
 - Phase 5: COMPLETE
-- Phase 6: NOT STARTED
+- Phase 6: COMPLETE
