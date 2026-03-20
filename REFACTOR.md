@@ -77,16 +77,16 @@ Phase exit:
 
 ## Phase 4 - Publishing: YouTube Plus Instagram
 Checklist:
-- [ ] Write failing tests for generic `PublishRequest` and `PublishResult`.
-- [ ] Wrap the existing YouTube flow behind a `YouTubePublisher` adapter with no user-visible changes.
-- [ ] Write failing tests for Instagram reel publish container creation, publish completion, and error mapping.
-- [ ] Implement `InstagramPublisher` for direct publish to professional accounts.
-- [ ] Implement `InstagramExportBundleService` that always creates a reel MP4, caption text, hashtag text, and publish manifest.
-- [ ] Add target-specific metadata shaping so Instagram gets short-form captioning while YouTube keeps richer descriptions.
-- [ ] Ensure one render can fan out to both YouTube and Instagram unless render profiles differ.
-- [ ] Keep direct Instagram publish behind a feature flag; export bundle generation remains enabled even when direct publish is off.
+- [x] Write failing tests for generic `PublishRequest` and `PublishResult`.
+- [x] Wrap the existing YouTube flow behind a `YouTubePublisher` adapter with no user-visible changes.
+- [x] Write failing tests for Instagram reel publish container creation, publish completion, and error mapping.
+- [x] Implement `InstagramPublisher` for direct publish to professional accounts.
+- [x] Implement `InstagramExportBundleService` that always creates a reel MP4, caption text, hashtag text, and publish manifest.
+- [x] Add target-specific metadata shaping so Instagram gets short-form captioning while YouTube keeps richer descriptions.
+- [x] Ensure one render can fan out to both YouTube and Instagram unless render profiles differ.
+- [x] Keep direct Instagram publish behind a feature flag; export bundle generation remains enabled even when direct publish is off.
 Phase exit:
-- [ ] YouTube regression tests stay green and Instagram direct/export paths are both covered.
+- [x] YouTube regression tests stay green and Instagram direct/export paths are both covered.
 
 ## Phase 5 - Messaging Channels: Telegram Plus WhatsApp
 Checklist:
@@ -210,9 +210,19 @@ Recommended phase-gate commands:
 - Blockers: None
 - Next task: Begin Phase 4 publishing work with YouTube publisher hardening and Instagram direct/export support.
 
+### Task 4.1 - Add publishing and Instagram export flow
+
+- Status: COMPLETE
+- Tests added: `tests/unit/test_phase4_publishing.py`
+- Commands run: targeted pytest for Phase 4 publishing and workflow orchestrator tests, full `pytest tests/unit`, `pytest tests/e2e -m e2e`, `mypy reddit_flow`
+- Result: Added `InstagramExportBundleService`, `InstagramPublisher`, `PublishRequest.export_only`, and updated the orchestrator to route Instagram destinations alongside YouTube while preserving the legacy flow.
+- Decisions: Keep Instagram direct publishing feature-gated through settings, but always build export bundles so the workflow has a publishable artifact even when direct publish is off.
+- Blockers: None
+- Next task: Start Phase 5 messaging-channel work with Telegram/WhatsApp abstractions.
+
 ## Current Verification
 
-- `pytest tests/unit`: 650 passed
+- `pytest tests/unit`: 655 passed
 - `pytest tests/e2e -m e2e`: 13 passed
 - `mypy reddit_flow`: green
 - `bandit reddit_flow/clients/medium_client.py`: clean
@@ -223,6 +233,6 @@ Recommended phase-gate commands:
 - Phase 1: COMPLETE
 - Phase 2: COMPLETE
 - Phase 3: COMPLETE
-- Phase 4: NOT STARTED
+- Phase 4: COMPLETE
 - Phase 5: NOT STARTED
 - Phase 6: NOT STARTED

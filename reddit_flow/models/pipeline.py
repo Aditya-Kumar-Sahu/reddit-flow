@@ -194,6 +194,7 @@ class PublishRequest(BaseModel):
     media_url: Optional[str] = Field(default=None, description="URL of generated media to publish")
     script: VideoScript = Field(..., description="Script metadata to use for publish metadata")
     content_item: ContentItem = Field(..., description="Canonical source content")
+    export_only: bool = Field(default=False, description="Generate a bundle without direct publish")
     additional_description: str = Field(
         default="", description="Extra destination-specific description"
     )

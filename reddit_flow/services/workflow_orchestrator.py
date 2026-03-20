@@ -12,7 +12,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
 from reddit_flow.clients import MediumClient
-from reddit_flow.config import get_logger
+from reddit_flow.config import Settings, get_logger
 from reddit_flow.exceptions import (
     AIGenerationError,
     ContentError,
@@ -33,18 +33,7 @@ from reddit_flow.models import (
     RedditPost,
     VideoScript,
 )
-
-# from reddit_flow.pipeline.providers import (
-#     AnthropicScriptProvider,
-#     ElevenLabsVoiceProvider,
-#     GeminiScriptProvider,
-#     GoogleCloudTTSProvider,
-#     HeyGenVideoProvider,
-#     OpenAIScriptProvider,
-#     OpenAITTSProvider,
-#     TavusVideoProvider,
-# )
-from reddit_flow.pipeline.publishers import YouTubePublisher
+from reddit_flow.pipeline.publishers import InstagramPublisher, YouTubePublisher
 from reddit_flow.pipeline.registry import ProviderRegistry, SourceAdapterRegistry
 from reddit_flow.pipeline.sources import (
     MediumArticleSourceAdapter,
@@ -249,13 +238,12 @@ class WorkflowOrchestrator:
         return self._source_registry
 
     @property
-    def publisher_registry(self) -> ProviderRegistry[YouTubePublisher]:
+    def publisher_registry(self) -> ProviderRegistry[Any]:
         """Lazy-load the publish destination registry."""
         if self._publisher_registry is None:
-            registry: ProviderRegistry[YouTubePublisher] = ProviderRegistry(
-                provider_kind="publisher"
-            )
+            registry: ProviderRegistry[Any] = ProviderRegistry(provider_kind="publisher")
             registry.register("youtube", YouTubePublisher(self.upload_service))
+            registry.register("instagram", InstagramPublisher(settings=Settings()))
             self._publisher_registry = registry
         return self._publisher_registry
 
@@ -405,6 +393,7 @@ class WorkflowOrchestrator:
                         media_url=media_result.video_url,
                         script=script,
                         content_item=content_item,
+                        export_only=destination.export_only,
                         additional_description=f"\n\nSource: {content_item.source_url}",
                         keep_local_file=bool(request.metadata.get("keep_local_file", False)),
                         metadata=destination.metadata,
